@@ -104,4 +104,58 @@ elif choice in ["➕ Rezervare Nouă", "👥 Rezervare Grup"]:
             cam_sel = "Toate" if is_grup else st.selectbox("🛏️ Camera", list(CAMERE_INFO.keys()))
             
             c1, c2 = st.columns(2)
-            d_in = c1.date_input("📥 Data Check-in",
+            d_in = c1.date_input("📥 Data Check-in", date.today())
+            d_out = c2.date_input("📤 Data Check-out", date.today() + timedelta(days=1))
+            
+            pret_sugerat = sum(CAMERE_INFO.values()) if is_grup else CAMERE_INFO[cam_sel]
+            pret_final = st.number_input("💰 Preț Total (RON)", value=float(pret_sugerat))
+            
+            status = st.selectbox("Status", ["Confirmat", "În așteptare", "Anulat"])
+            note = st.text_area("📝 Note (Preferințe, avans, etc.)")
+            
+            submit = st.form_submit_button("✅ SALVEAZĂ REZERVAREA")
+            
+            if submit:
+                t_in = datetime.combine(d_in, datetime.strptime("15:00", "%H:%M").time())
+                t_out = datetime.combine(d_out, datetime.strptime("11:00", "%H:%M").time())
+                
+                camere_vizate = list(CAMERE_INFO.keys()) if is_grup else [cam_sel]
+                conflict = [c for c in camere_vizate if not este_disponibila(c, t_in, t_out)]
+                
+                if conflict:
+                    st.error(f"❌ Camere ocupate: {', '.join(conflict)}")
+                else:
+                    for cam_name in camere_vizate:
+                        p_unit = pret_final / 6 if is_grup else pret_final
+                        c.execute("INSERT INTO rezervari (nume, telefon, camera, checkin, checkout, status, pret_total, note) VALUES (?,?,?,?,?,?,?,?)",
+                                  (nume, telefon, cam_name, t_in, t_out, status, p_unit, note))
+                    conn.commit()
+                    st.balloons()
+                    st.success(f"Rezervare salvată pentru {nume}!")
+                    
+                    # Buton WhatsApp
+                    mesaj = f"Salut {nume}! Confirmăm rezervarea ({d_in} - {d_out}). Te așteptăm!"
+                    url_wa = f"https://api.whatsapp.com/send?phone={telefon}&text={urllib.parse.quote(mesaj)}"
+                    st.markdown(f'[📱 Trimite Confirmare WhatsApp]({url_wa})')
+
+# --- 3. LISTA REZERVĂRI (CARDURI) ---
+elif choice == "📋 Listă Rezervări":
+    st.title("Listă Rezervări")
+    df = pd.read_sql_query("SELECT * FROM rezervari ORDER BY checkin DESC", conn)
+    
+    for i, r in df.iterrows():
+        color = "#2ECC71" if r['status'] == "Confirmat" else "#F1C40F"
+        if r['status'] == "Anulat": color = "#E74C3C"
+        
+        with st.container():
+            st.markdown(f"""
+                <div style="background-color: white; padding: 15px; border-radius: 10px; border-left: 8px solid {color}; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <h3 style="margin:0;">{r['camera']} - {r['nume']}</h3>
+                    <p style="margin:5px 0;">📅 {r['checkin'][5:16]} | 💰 {r['pret_total']} RON</p>
+                    <p style="margin:0; font-size: 14px; color: #666;">📝 {r['note'] if r['note'] else '-'}</p>
+                </div>
+            """, unsafe_allow_html=True)
+            if st.button(f"Șterge ID {r['id']}", key=f"del_{r['id']}"):
+                c.execute("DELETE FROM rezervari WHERE id = ?", (r['id'],))
+                conn.commit()
+                st.rerun()
