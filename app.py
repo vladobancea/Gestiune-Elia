@@ -98,64 +98,33 @@ def este_disponibila(df, camera, start, end):
     conflict = mask & ~( (df['checkout'] <= start) | (df['checkin'] >= end) )
     return df[conflict].empty
 
-# --- FUNCȚIE PDF NOUĂ (MERGE CU FIȘIER EXISTENT) ---
+# --- FUNCȚIE PDF MERGE (PAGINA 2 FIXĂ) ---
 def genereaza_pdf(r):
-    # 1. Generăm prima pagină (Confirmarea) în memorie
-    pdf = FPDF()
-    pdf.add_page()
-    
-    # Logo
-    if os.path.exists("LOGO final.png"):
-        pdf.image("LOGO final.png", x=10, y=8, w=30)
-        pdf.ln(20)
-        
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(0, 10, "CONFIRMARE REZERVARE", ln=True, align='C')
-    pdf.ln(10)
-    
+    pdf = FPDF(); pdf.add_page()
+    if os.path.exists("LOGO final.png"): pdf.image("LOGO final.png", x=10, y=8, w=30); pdf.ln(20)
+    pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "CONFIRMARE REZERVARE", ln=True, align='C'); pdf.ln(10)
     pdf.set_font("Arial", '', 12)
     pdf.cell(0, 10, f"ID Rezervare: {r['id']}", ln=True)
     pdf.cell(0, 10, f"Client: {r['nume']}", ln=True)
     pdf.cell(0, 10, f"Telefon: {r['telefon']}", ln=True)
     pdf.cell(0, 10, f"Camera: {r['camera']}", ln=True)
-    
-    try:
-        d1 = r['checkin'].strftime('%d-%m-%Y')
-        d2 = r['checkout'].strftime('%d-%m-%Y')
+    try: d1, d2 = r['checkin'].strftime('%d-%m-%Y'), r['checkout'].strftime('%d-%m-%Y')
     except: d1, d2 = str(r['checkin']), str(r['checkout'])
-        
-    pdf.cell(0, 10, f"Check-in: {d1} (dupa ora 15:00)", ln=True)
-    pdf.cell(0, 10, f"Check-out: {d2} (pana in ora 11:00)", ln=True)
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, f"Total de Plata: {r['pret_total']} RON", ln=True)
+    pdf.cell(0, 10, f"Check-in: {d1} (dupa 15:00)", ln=True); pdf.cell(0, 10, f"Check-out: {d2} (pana la 11:00)", ln=True)
+    pdf.ln(5); pdf.set_font("Arial", 'B', 12); pdf.cell(0, 10, f"Total de Plata: {r['pret_total']} RON", ln=True)
+    if pd.notna(r['note']) and r['note']: pdf.ln(5); pdf.set_font("Arial", '', 10); pdf.multi_cell(0, 10, f"Note: {r['note']}")
 
-    if pd.notna(r['note']) and r['note']:
-        pdf.ln(5); pdf.set_font("Arial", '', 10)
-        pdf.multi_cell(0, 10, f"Note: {r['note']}")
-
-    # Salvăm prima pagină într-un buffer (memorie)
     pdf_bytes = pdf.output(dest='S').encode('latin-1', 'replace')
     pdf1_buffer = io.BytesIO(pdf_bytes)
-
-    # 2. Combinăm cu fișierul PDF existent
     output_writer = PdfWriter()
+    output_writer.add_page(PdfReader(pdf1_buffer).pages[0])
     
-    # Adăugăm pagina creată mai sus
-    doc1 = PdfReader(pdf1_buffer)
-    output_writer.add_page(doc1.pages[0])
-    
-    # Adăugăm "General pag2.pdf" dacă există
     if os.path.exists("General pag2.pdf"):
         try:
             doc2 = PdfReader("General pag2.pdf")
-            # Adăugăm toate paginile din fișierul extern (de obicei e doar una)
-            for page in doc2.pages:
-                output_writer.add_page(page)
-        except Exception as e:
-            print(f"Eroare la citirea paginii 2: {e}")
+            for page in doc2.pages: output_writer.add_page(page)
+        except: pass
     
-    # 3. Scriem rezultatul final
     final_buffer = io.BytesIO()
     output_writer.write(final_buffer)
     return final_buffer.getvalue()
@@ -201,7 +170,7 @@ if st.session_state.get('show_add_modal', False):
         st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
-# 5. HARTA (OPTIMIZARE MOBIL)
+# 5. HARTA & ADMINISTRARE
 # ==========================================
 if sel_page == "Harta":
     st.markdown("<h2 style='text-align:center'>🗺️ Harta</h2>", unsafe_allow_html=True)
@@ -209,10 +178,9 @@ if sel_page == "Harta":
     zile = [d_start + timedelta(days=i) for i in range(14)]
     
     df_v = df_master[df_master['status']!='Anulat'].copy() if not df_master.empty else pd.DataFrame(columns=df_master.columns)
-    if not df_v.empty:
-        df_v['ci'] = df_v['checkin'].dt.date; df_v['co'] = df_v['checkout'].dt.date
+    if not df_v.empty: df_v['ci'] = df_v['checkin'].dt.date; df_v['co'] = df_v['checkout'].dt.date
 
-    # Tabel
+    # Tabel Harta
     html = '<div class="scroll-container"><table class="custom-table"><thead><tr><th class="first-col">Cam</th>'
     for d in zile: html += f'<th>{d.strftime("%d")}<br>{d.strftime("%b")}</th>'
     html += '</tr></thead><tbody>'
@@ -236,12 +204,12 @@ if sel_page == "Harta":
         html += '</tr>'
     st.markdown(html + '</tbody></table></div>', unsafe_allow_html=True)
 
-    # --- SELECTARE ID CU TASTATURĂ & DOWNLOAD PDF ---
+    # --- ZONA CĂUTARE & EDITARE ---
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container():
         st.markdown("<div class='info-card'>", unsafe_allow_html=True)
         c1, c2 = st.columns([1, 2])
-        search_id = c1.number_input("🔎 Scrie ID:", min_value=0, step=1, value=0)
+        search_id = c1.number_input("🔎 Caută ID (Tastatură):", min_value=0, step=1, value=0)
         
         selected_r = None
         if search_id > 0 and not df_master.empty:
@@ -250,27 +218,47 @@ if sel_page == "Harta":
         
         if selected_r is not None:
             r = selected_r
-            st.markdown(f"**👤 {r['nume']}** | {r['camera']}")
-            st.markdown(f"📅 {r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')}")
+            # Header Rezervare
+            st.markdown(f"### 👤 {r['nume']}") 
+            st.markdown(f"**Camera:** {r['camera']} | **Perioada:** {r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')}")
             
-            # BUTOANE ACTIUNE
+            # --- ZONA DE EDITARE ---
+            with st.expander("✏️ Editează / Modifică Datele", expanded=False):
+                with st.form(key=f"edit_form_{r['id']}"):
+                    ce1, ce2 = st.columns(2)
+                    new_nume = ce1.text_input("Nume", r['nume'])
+                    new_tel = ce2.text_input("Telefon", r['telefon'])
+                    new_pret = ce1.number_input("Preț Total", value=float(r['pret_total']))
+                    new_note = ce2.text_area("Note", r['note'] if pd.notna(r['note']) else "")
+                    
+                    if st.form_submit_button("💾 Salvează Modificările", use_container_width=True):
+                        idx = df_master[df_master['id'] == r['id']].index[0]
+                        df_master.at[idx, 'nume'] = new_nume
+                        df_master.at[idx, 'telefon'] = new_tel
+                        df_master.at[idx, 'pret_total'] = new_pret
+                        df_master.at[idx, 'note'] = new_note
+                        update_data(df_master)
+                        st.toast("Date actualizate cu succes!"); st.rerun()
+
+            # --- BUTOANE ACȚIUNE RAPIDĂ ---
+            st.markdown("---")
             col_act1, col_act2, col_act3 = st.columns(3)
             
-            # 1. Download PDF (Merge)
-            col_act1.download_button("📄 PDF", data=genereaza_pdf(r), file_name=f"Rezervare_{r['id']}.pdf", mime="application/pdf")
+            # 1. Download PDF
+            col_act1.download_button("📄 PDF", data=genereaza_pdf(r), file_name=f"Rezervare_{r['id']}.pdf", mime="application/pdf", use_container_width=True)
             
             # 2. WhatsApp
             wa = urllib.parse.quote(f"Salut {r['nume']}, confirmare rezervare.")
-            col_act2.markdown(f'<a href="https://api.whatsapp.com/send?phone={r["telefon"]}&text={wa}" target="_blank"><button style="width:100%;background:#25D366;color:white;border:none;padding:10px;border-radius:5px;font-weight:bold">WA</button></a>', unsafe_allow_html=True)
+            col_act2.markdown(f'<a href="https://api.whatsapp.com/send?phone={r["telefon"]}&text={wa}" target="_blank"><button style="width:100%;background:#25D366;color:white;border:none;padding:10px;border-radius:5px;font-weight:bold; height: 38px;">WhatsApp</button></a>', unsafe_allow_html=True)
             
             # 3. Sterge
-            if col_act3.button("🗑️ Sterge"):
+            if col_act3.button("🗑️ Sterge", use_container_width=True):
                 df_master = df_master[df_master['id'] != r['id']]; update_data(df_master); st.rerun()
 
         elif search_id > 0:
             st.warning("ID inexistent.")
         else:
-            st.info("Tastează ID-ul pentru a vedea opțiunile.")
+            st.info("Tastează ID-ul pentru editare și opțiuni.")
         st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
