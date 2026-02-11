@@ -9,6 +9,10 @@ import base64
 import os
 import io
 from pypdf import PdfWriter, PdfReader
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 
 # ==========================================
 # 1. CONFIGURARE PAGINĂ & DESIGN
@@ -75,24 +79,28 @@ CAMERE_INFO = {"Camera 1": 200, "Camera 2": 200, "Camera 3": 250, "Camera 4": 25
 def get_data():
     try:
         df = conn.read(worksheet="Rezervari", ttl=0)
-        req = ['id', 'nume', 'telefon', 'camera', 'checkin', 'checkout', 'status', 'pret_total', 'note']
-        if df.empty or not all(c in df.columns for c in req): return pd.DataFrame(columns=req)
+        # Am adăugat 'email' în lista de coloane necesare
+        req = ['id', 'nume', 'telefon', 'email', 'camera', 'checkin', 'checkout', 'status', 'pret_total', 'note']
         
-        # Conversii Date
+        # Dacă foaia e goală sau lipsesc coloane (ex: email), returnăm structura goală
+        if df.empty: return pd.DataFrame(columns=req)
+        
+        # Patch pentru coloana email dacă nu există în sheet-ul vechi
+        if 'email' not in df.columns: df['email'] = ""
+
         df['checkin'] = pd.to_datetime(df['checkin'], errors='coerce')
         df['checkout'] = pd.to_datetime(df['checkout'], errors='coerce')
         df = df.dropna(subset=['checkin', 'checkout'])
-        
-        # Conversii Numere
         df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0).astype(int)
         df['pret_total'] = pd.to_numeric(df['pret_total'], errors='coerce').fillna(0.0)
         
-        # --- FIX TELEFON (Eliminare .0) ---
-        df['telefon'] = df['telefon'].astype(str).str.replace(r'\.0$', '', regex=True)
-        df['telefon'] = df['telefon'].replace('nan', '')
+        # Fix format telefon
+        df['telefon'] = df['telefon'].astype(str).str.replace(r'\.0$', '', regex=True).replace('nan', '')
+        # Fix format email (sa fie string)
+        df['email'] = df['email'].astype(str).replace('nan', '')
         
         return df
-    except: return pd.DataFrame(columns=['id', 'nume', 'telefon', 'camera', 'checkin', 'checkout', 'status', 'pret_total', 'note'])
+    except: return pd.DataFrame(columns=['id', 'nume', 'telefon', 'email', 'camera', 'checkin', 'checkout', 'status', 'pret_total', 'note'])
 
 def update_data(df):
     try:
@@ -108,14 +116,15 @@ def este_disponibila(df, camera, start, end):
     conflict = mask & ~( (df['checkout'] <= start) | (df['checkin'] >= end) )
     return df[conflict].empty
 
-# --- FUNCȚIE PDF MERGE (PAGINA 2 FIXĂ) ---
-def genereaza_pdf(r):
+# --- FUNCȚIE GENERARE PDF (2 PAGINI) ---
+def genereaza_pdf_bytes(r):
     pdf = FPDF(); pdf.add_page()
     if os.path.exists("LOGO final.png"): pdf.image("LOGO final.png", x=10, y=8, w=30); pdf.ln(20)
     pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "CONFIRMARE REZERVARE", ln=True, align='C'); pdf.ln(10)
     pdf.set_font("Arial", '', 12)
     pdf.cell(0, 10, f"ID Rezervare: {r['id']}", ln=True)
     pdf.cell(0, 10, f"Client: {r['nume']}", ln=True)
+    pdf.cell(0, 10, f"Email: {r.get('email', '-')}", ln=True)
     pdf.cell(0, 10, f"Telefon: {r['telefon']}", ln=True)
     pdf.cell(0, 10, f"Camera: {r['camera']}", ln=True)
     try: d1, d2 = r['checkin'].strftime('%d-%m-%Y'), r['checkout'].strftime('%d-%m-%Y')
@@ -125,6 +134,8 @@ def genereaza_pdf(r):
     if pd.notna(r['note']) and r['note']: pdf.ln(5); pdf.set_font("Arial", '', 10); pdf.multi_cell(0, 10, f"Note: {r['note']}")
 
     pdf_bytes = pdf.output(dest='S').encode('latin-1', 'replace')
+    
+    # Merge cu Pagina 2
     pdf1_buffer = io.BytesIO(pdf_bytes)
     output_writer = PdfWriter()
     output_writer.add_page(PdfReader(pdf1_buffer).pages[0])
@@ -139,6 +150,49 @@ def genereaza_pdf(r):
     output_writer.write(final_buffer)
     return final_buffer.getvalue()
 
+# --- FUNCȚIE TRIMITERE EMAIL ---
+def trimite_email_cu_pdf(destinatar, r, pdf_bytes):
+    try:
+        # Preluare credențiale din Secrets
+        smtp_server = st.secrets["email"]["smtp_server"]
+        smtp_port = st.secrets["email"]["smtp_port"]
+        sender_email = st.secrets["email"]["sender_email"]
+        sender_password = st.secrets["email"]["sender_password"]
+
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = destinatar
+        msg['Subject'] = f"Confirmare Rezervare Elia - {r['nume']}"
+
+        body = f"""Buna ziua {r['nume']},
+
+Va multumim ca ati ales Pensiunea Elia!
+Atasat regasiti confirmarea rezervarii si regulamentul pensiunii.
+
+Detalii pe scurt:
+Camera: {r['camera']}
+Perioada: {r['checkin'].strftime('%d-%m-%Y')} -> {r['checkout'].strftime('%d-%m-%Y')}
+Total: {r['pret_total']} RON
+
+Va asteptam cu drag!
+Echipa Elia
+"""
+        msg.attach(MIMEText(body, 'plain'))
+
+        # Atașare PDF
+        part = MIMEApplication(pdf_bytes, Name=f"Rezervare_{r['id']}.pdf")
+        part['Content-Disposition'] = f'attachment; filename="Rezervare_{r["id"]}.pdf"'
+        msg.attach(part)
+
+        # Trimitere
+        with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+        
+        return True, "Email trimis cu succes!"
+    except Exception as e:
+        return False, f"Eroare email: {str(e)}"
+
 # ==========================================
 # 3. SIDEBAR & NAV
 # ==========================================
@@ -151,7 +205,7 @@ sel_page = menu[choice]
 df_master = get_data()
 
 # ==========================================
-# 4. MODAL ADAUGARE
+# 4. MODAL ADAUGARE (+ EMAIL)
 # ==========================================
 if st.session_state.get('show_add_modal', False):
     st.markdown("---")
@@ -161,21 +215,69 @@ if st.session_state.get('show_add_modal', False):
             c1, c2 = st.columns(2)
             nume = c1.text_input("Nume", placeholder="Client")
             tel = c2.text_input("Tel", placeholder="07xx")
-            cam = c1.selectbox("Cameră", list(CAMERE_INFO.keys()) + ["Toate"])
-            d1 = c2.date_input("In", date.today()); d2 = c2.date_input("Out", date.today()+timedelta(1))
+            
+            c_email, c_cam = st.columns(2)
+            email_client = c_email.text_input("Email (Opțional)", placeholder="client@yahoo.com")
+            cam = c_cam.selectbox("Cameră", list(CAMERE_INFO.keys()) + ["Toate"])
+            
+            d1 = c1.date_input("In", date.today()); d2 = c2.date_input("Out", date.today()+timedelta(1))
             pret = st.number_input("Preț Total", value=float(sum(CAMERE_INFO.values()) if "Toate" in cam else CAMERE_INFO.get(cam, 0)))
             note = st.text_area("Note")
+            
             if st.form_submit_button("🚀 Salvează"):
                 t1, t2 = datetime.combine(d1, time(15,0)), datetime.combine(d2, time(11,0))
                 cms = list(CAMERE_INFO.keys()) if "Toate" in cam else [cam]
+                
                 if all(este_disponibila(df_master, c, t1, t2) for c in cms):
                     new_rows = []
                     max_id = df_master['id'].max() if not df_master.empty else 0
+                    
+                    # Logică adăugare rânduri
+                    created_reservations = []
                     for i, cn in enumerate(cms):
-                        new_rows.append({"id": int(max_id+1+i), "nume": nume, "telefon": tel, "camera": cn, "checkin": t1, "checkout": t2, "status": "Confirmat", "pret_total": pret/len(cms), "note": note})
+                        new_r = {
+                            "id": int(max_id+1+i), 
+                            "nume": nume, 
+                            "telefon": tel, 
+                            "email": email_client,
+                            "camera": cn, 
+                            "checkin": t1, 
+                            "checkout": t2, 
+                            "status": "Confirmat", 
+                            "pret_total": pret/len(cms), 
+                            "note": note
+                        }
+                        new_rows.append(new_r)
+                        created_reservations.append(new_r) # Păstrăm pentru email
+                    
+                    # Salvare în DB
                     update_data(pd.concat([df_master, pd.DataFrame(new_rows)], ignore_index=True))
-                    st.session_state['show_add_modal'] = False; st.toast("Salvat!"); st.rerun()
+                    
+                    # --- TRIMITERE EMAIL AUTOMATĂ ---
+                    email_status = ""
+                    if email_client and "@" in email_client:
+                        with st.spinner("Se trimite email-ul..."):
+                            # Generăm PDF pentru prima cameră (sau un pdf sumar)
+                            # Pentru simplitate, generăm PDF pentru prima cameră din grup
+                            # Dacă e grup, clientul primește confirmarea pentru una, sau putem itera.
+                            # Trimitem pentru prima rezervare creată ca referință.
+                            pdf_data = genereaza_pdf_bytes(created_reservations[0]) 
+                            
+                            # Dacă a rezervat "Toate", ajustăm prețul afișat în PDF să fie cel total
+                            r_mail = created_reservations[0].copy()
+                            if len(created_reservations) > 1:
+                                r_mail['camera'] = "Grup (Toate Camerele)"
+                                r_mail['pret_total'] = pret
+                            
+                            succes, msg = trimite_email_cu_pdf(email_client, r_mail, pdf_data)
+                            email_status = f" | {msg}"
+                            if succes: st.balloons()
+                            else: st.error(msg)
+
+                    st.session_state['show_add_modal'] = False
+                    st.toast(f"Salvat!{email_status}"); st.rerun()
                 else: st.error("Ocupat!")
+            
             if st.form_submit_button("Închide"): st.session_state['show_add_modal'] = False; st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -228,7 +330,6 @@ if sel_page == "Harta":
         
         if selected_r is not None:
             r = selected_r
-            # Header Rezervare
             st.markdown(f"### 👤 {r['nume']}") 
             st.markdown(f"**Camera:** {r['camera']} | **Perioada:** {r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')}")
             
@@ -238,13 +339,18 @@ if sel_page == "Harta":
                     ce1, ce2 = st.columns(2)
                     new_nume = ce1.text_input("Nume", r['nume'])
                     new_tel = ce2.text_input("Telefon", r['telefon'])
-                    new_pret = ce1.number_input("Preț Total", value=float(r['pret_total']))
-                    new_note = ce2.text_area("Note", r['note'] if pd.notna(r['note']) else "")
+                    
+                    ce3, ce4 = st.columns(2)
+                    new_email = ce3.text_input("Email", r.get('email', ''))
+                    new_pret = ce4.number_input("Preț Total", value=float(r['pret_total']))
+                    
+                    new_note = st.text_area("Note", r['note'] if pd.notna(r['note']) else "")
                     
                     if st.form_submit_button("💾 Salvează Modificările", use_container_width=True):
                         idx = df_master[df_master['id'] == r['id']].index[0]
                         df_master.at[idx, 'nume'] = new_nume
                         df_master.at[idx, 'telefon'] = new_tel
+                        df_master.at[idx, 'email'] = new_email
                         df_master.at[idx, 'pret_total'] = new_pret
                         df_master.at[idx, 'note'] = new_note
                         update_data(df_master)
@@ -252,18 +358,27 @@ if sel_page == "Harta":
 
             # --- BUTOANE ACȚIUNE RAPIDĂ ---
             st.markdown("---")
-            col_act1, col_act2, col_act3 = st.columns(3)
+            col_act1, col_act2 = st.columns(2)
             
-            # 1. Download PDF
-            col_act1.download_button("📄 PDF", data=genereaza_pdf(r), file_name=f"Rezervare_{r['id']}.pdf", mime="application/pdf", use_container_width=True)
+            # PDF & Email Manual
+            pdf_bytes = genereaza_pdf_bytes(r)
+            col_act1.download_button("📄 Descarcă PDF", data=pdf_bytes, file_name=f"Rezervare_{r['id']}.pdf", mime="application/pdf", use_container_width=True)
             
-            # 2. WhatsApp (Mesaj Detaliat)
+            if col_act1.button("📧 Trimite Email Acum", use_container_width=True):
+                if r.get('email') and "@" in str(r['email']):
+                    with st.spinner("Trimit..."):
+                        ok, msg = trimite_email_cu_pdf(r['email'], r, pdf_bytes)
+                        if ok: st.success(msg)
+                        else: st.error(msg)
+                else:
+                    st.error("Lipsă email client!")
+
+            # WhatsApp & Sterge
             msg_text = f"Salut {r['nume']}, confirmam rezervarea la Elia.\nCamera: {r['camera']}\nPerioada: {r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')}\nTotal: {r['pret_total']} RON.\nTe rog sa descarci PDF-ul din telefon pentru detalii."
             wa = urllib.parse.quote(msg_text)
-            col_act2.markdown(f'<a href="https://api.whatsapp.com/send?phone={r["telefon"]}&text={wa}" target="_blank"><button style="width:100%;background:#25D366;color:white;border:none;padding:10px;border-radius:5px;font-weight:bold; height: 38px;">WhatsApp</button></a>', unsafe_allow_html=True)
+            col_act2.markdown(f'<a href="https://api.whatsapp.com/send?phone={r["telefon"]}&text={wa}" target="_blank"><button style="width:100%;background:#25D366;color:white;border:none;padding:10px;border-radius:5px;font-weight:bold; height: 38px; margin-bottom: 15px;">💬 WhatsApp</button></a>', unsafe_allow_html=True)
             
-            # 3. Sterge
-            if col_act3.button("🗑️ Sterge", use_container_width=True):
+            if col_act2.button("🗑️ Sterge", use_container_width=True):
                 df_master = df_master[df_master['id'] != r['id']]; update_data(df_master); st.rerun()
 
         elif search_id > 0:
