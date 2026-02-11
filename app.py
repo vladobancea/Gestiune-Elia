@@ -77,10 +77,21 @@ def get_data():
         df = conn.read(worksheet="Rezervari", ttl=0)
         req = ['id', 'nume', 'telefon', 'camera', 'checkin', 'checkout', 'status', 'pret_total', 'note']
         if df.empty or not all(c in df.columns for c in req): return pd.DataFrame(columns=req)
-        df['checkin'] = pd.to_datetime(df['checkin'], errors='coerce'); df['checkout'] = pd.to_datetime(df['checkout'], errors='coerce')
+        
+        # Conversii Date
+        df['checkin'] = pd.to_datetime(df['checkin'], errors='coerce')
+        df['checkout'] = pd.to_datetime(df['checkout'], errors='coerce')
         df = df.dropna(subset=['checkin', 'checkout'])
+        
+        # Conversii Numere
         df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0).astype(int)
         df['pret_total'] = pd.to_numeric(df['pret_total'], errors='coerce').fillna(0.0)
+        
+        # --- FIX TELEFON (Eliminare .0) ---
+        df['telefon'] = df['telefon'].astype(str).str.replace(r'\.0$', '', regex=True)
+        # Înlocuim "nan" cu spațiu gol dacă nu există telefon
+        df['telefon'] = df['telefon'].replace('nan', '')
+        
         return df
     except: return pd.DataFrame(columns=['id', 'nume', 'telefon', 'camera', 'checkin', 'checkout', 'status', 'pret_total', 'note'])
 
