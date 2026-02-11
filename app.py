@@ -89,7 +89,6 @@ def get_data():
         
         # --- FIX TELEFON (Eliminare .0) ---
         df['telefon'] = df['telefon'].astype(str).str.replace(r'\.0$', '', regex=True)
-        # Înlocuim "nan" cu spațiu gol dacă nu există telefon
         df['telefon'] = df['telefon'].replace('nan', '')
         
         return df
@@ -258,8 +257,9 @@ if sel_page == "Harta":
             # 1. Download PDF
             col_act1.download_button("📄 PDF", data=genereaza_pdf(r), file_name=f"Rezervare_{r['id']}.pdf", mime="application/pdf", use_container_width=True)
             
-            # 2. WhatsApp
-            wa = urllib.parse.quote(f"Salut {r['nume']}, confirmare rezervare.")
+            # 2. WhatsApp (Mesaj Detaliat)
+            msg_text = f"Salut {r['nume']}, confirmam rezervarea la Elia.\nCamera: {r['camera']}\nPerioada: {r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')}\nTotal: {r['pret_total']} RON.\nTe rog sa descarci PDF-ul din telefon pentru detalii."
+            wa = urllib.parse.quote(msg_text)
             col_act2.markdown(f'<a href="https://api.whatsapp.com/send?phone={r["telefon"]}&text={wa}" target="_blank"><button style="width:100%;background:#25D366;color:white;border:none;padding:10px;border-radius:5px;font-weight:bold; height: 38px;">WhatsApp</button></a>', unsafe_allow_html=True)
             
             # 3. Sterge
