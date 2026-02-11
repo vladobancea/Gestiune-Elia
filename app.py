@@ -9,7 +9,7 @@ from streamlit_gsheets import GSheetsConnection
 # --- 1. CONFIGURARE ---
 st.set_page_config(page_title="Manager Pensiune Pro", layout="wide", initial_sidebar_state="collapsed")
 
-# --- CSS (Design identic cu cel anterior) ---
+# --- CSS ---
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
@@ -33,38 +33,53 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 CAMERE_INFO = {"Camera 1": 200, "Camera 2": 200, "Camera 3": 250, "Camera 4": 250, "Camera 5": 300, "Camera 6": 350}
 
-# --- 3. FUNCȚII UTILITARE (Adaptate pentru Pandas) ---
+# --- 3. FUNCȚII UTILITARE (FIXATE PENTRU EROAREA DE DATĂ) ---
 
 def get_data():
-    # Citim datele din Sheet, forțăm reîmprospătarea (ttl=0)
+    """Citește datele și le repară formatul."""
     try:
         df = conn.read(worksheet="Rezervari", ttl=0)
-        # Convertim coloanele de dată la datetime objects
-        df['checkin'] = pd.to_datetime(df['checkin'])
-        df['checkout'] = pd.to_datetime(df['checkout'])
-        # Asigurăm că ID este numeric
-        df['id'] = pd.to_numeric(df['id'])
+        
+        # Dacă foaia e goală sau nu are coloanele necesare
+        required_cols = ['id', 'nume', 'telefon', 'camera', 'checkin', 'checkout', 'status', 'pret_total', 'note']
+        if df.empty or not all(col in df.columns for col in required_cols):
+            return pd.DataFrame(columns=required_cols)
+            
+        # FIX: Forțăm conversia în Datetime. Orice eroare devine NaT (Not a Time)
+        df['checkin'] = pd.to_datetime(df['checkin'], errors='coerce')
+        df['checkout'] = pd.to_datetime(df['checkout'], errors='coerce')
+        
+        # Eliminăm rândurile unde data e invalidă (NaT)
+        df = df.dropna(subset=['checkin', 'checkout'])
+        
+        # Ne asigurăm că ID-ul și prețul sunt numerice
+        df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0).astype(int)
+        df['pret_total'] = pd.to_numeric(df['pret_total'], errors='coerce').fillna(0.0)
+        
         return df
     except Exception as e:
-        # Dacă foaia e goală sau dă eroare, returnăm structura goală
+        # În caz de eroare gravă (ex: conexiune), returnăm tabel gol
+        st.error(f"Eroare la citirea datelor: {e}")
         return pd.DataFrame(columns=['id', 'nume', 'telefon', 'camera', 'checkin', 'checkout', 'status', 'pret_total', 'note'])
 
 def update_data(df):
-    # Scriem înapoi în Google Sheets
-    conn.update(worksheet="Rezervari", data=df)
+    """Scrie datele înapoi în Google Sheets."""
+    try:
+        # Convertim datele înapoi la string pentru Google Sheets ca să nu facă probleme
+        df_save = df.copy()
+        df_save['checkin'] = df_save['checkin'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        df_save['checkout'] = df_save['checkout'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        conn.update(worksheet="Rezervari", data=df_save)
+    except Exception as e:
+        st.error(f"Eroare la salvare: {e}")
 
 def este_disponibila(df, camera, start, end, exclude_id=None):
-    # start și end sunt datetime objects
+    if df.empty: return True
     mask = (df['status'] != 'Anulat') & (df['camera'] == camera)
-    
-    # Logică de suprapunere intervale
-    # Conflict dacă: Nu (Checkout existent <= New Start SAU Checkin existent >= New End)
-    # Pandas vectorization
+    # Verificăm suprapunerea
     conflict = mask & ~( (df['checkout'] <= start) | (df['checkin'] >= end) )
-    
     if exclude_id:
         conflict = conflict & (df['id'] != exclude_id)
-        
     return df[conflict].empty
 
 def genereaza_pdf(r):
@@ -75,7 +90,12 @@ def genereaza_pdf(r):
     pdf.cell(0, 10, f"Client: {r['nume']}", ln=True)
     pdf.cell(0, 10, f"Telefon: {r['telefon']}", ln=True)
     pdf.cell(0, 10, f"Camera: {r['camera']}", ln=True)
-    pdf.cell(0, 10, f"Perioada: {r['checkin'].strftime('%Y-%m-%d')} -> {r['checkout'].strftime('%Y-%m-%d')}", ln=True)
+    try:
+        c_in = r['checkin'].strftime('%Y-%m-%d')
+        c_out = r['checkout'].strftime('%Y-%m-%d')
+    except:
+        c_in, c_out = str(r['checkin']), str(r['checkout'])
+    pdf.cell(0, 10, f"Perioada: {c_in} -> {c_out}", ln=True)
     pdf.cell(0, 10, f"Total Plata: {r['pret_total']} RON", ln=True)
     if pd.notna(r['note']) and r['note']:
         pdf.ln(5); pdf.multi_cell(0, 10, f"Note: {r['note']}")
@@ -90,7 +110,7 @@ if st.sidebar.button("➕ ADAUGĂ REZERVARE", key="btn_add_sidebar", use_contain
 menu = ["📅 Harta Disponibilității", "🗓️ Calendar Lunar", "📊 Statistici", "📋 Listă Rezervări"]
 choice = st.sidebar.radio("Meniu", menu)
 
-# Încărcăm datele o singură dată la începutul ciclului
+# --- ÎNCĂRCARE DATE ---
 df_master = get_data()
 
 # --- 5. MODAL ADĂUGARE REZERVARE ---
@@ -115,10 +135,8 @@ if st.session_state.get('show_add_modal', False):
                 t1, t2 = datetime.combine(d1, time(15, 0)), datetime.combine(d2, time(11, 0))
                 camere_target = list(CAMERE_INFO.keys()) if "Grup" in cam else [cam]
                 
-                # Verificăm disponibilitatea pe datele locale (df_master)
                 if all(este_disponibila(df_master, c, t1, t2) for c in camere_target):
                     new_rows = []
-                    # Calculăm noul ID
                     max_id = df_master['id'].max() if not df_master.empty else 0
                     if pd.isna(max_id): max_id = 0
                     
@@ -132,11 +150,10 @@ if st.session_state.get('show_add_modal', False):
                         }
                         new_rows.append(new_row)
                     
-                    # Actualizare DataFrame și Google Sheets
                     updated_df = pd.concat([df_master, pd.DataFrame(new_rows)], ignore_index=True)
                     update_data(updated_df)
                     st.session_state['show_add_modal'] = False
-                    st.success("Rezervare Salvată pe Google Drive!"); st.rerun()
+                    st.success("Rezervare Salvată!"); st.rerun()
                 else:
                     st.error("⚠️ Conflict! Una dintre camere este ocupată.")
             
@@ -152,10 +169,14 @@ if choice == "📅 Harta Disponibilității":
     zile = [d_start + timedelta(days=i) for i in range(14)]
     d_end_view = zile[-1]
     
-    # Pregătim datele pentru afișare (doar cele active)
-    df_view = df_master[df_master['status'] != 'Anulat'].copy()
-    df_view['checkin_d'] = df_view['checkin'].dt.date
-    df_view['checkout_d'] = df_view['checkout'].dt.date
+    # Pregătim datele pentru vizualizare
+    if not df_master.empty:
+        df_view = df_master[df_master['status'] != 'Anulat'].copy()
+        # AICI ERA EROAREA - ACUM E PROTEJATĂ DE get_data()
+        df_view['checkin_d'] = df_view['checkin'].dt.date
+        df_view['checkout_d'] = df_view['checkout'].dt.date
+    else:
+        df_view = pd.DataFrame(columns=df_master.columns)
 
     html = '<div class="scroll-container"><table class="custom-table"><thead><tr><th class="sticky-col">Cameră</th>'
     for d in zile: html += f'<th>{d.strftime("%d/%m")}</th>'
@@ -164,7 +185,10 @@ if choice == "📅 Harta Disponibilității":
     for cam in CAMERE_INFO.keys():
         html += f'<tr><td class="sticky-col">{cam}</td>'
         for d in zile:
-            # Filtrare cu Pandas
+            if df_view.empty:
+                html += f'<td><div class="calendar-box bg-liber"></div></td>'
+                continue
+
             r_out = df_view[(df_view['camera'] == cam) & (df_view['checkout_d'] == d)]
             r_in = df_view[(df_view['camera'] == cam) & (df_view['checkin_d'] == d)]
             r_stay = df_view[(df_view['camera'] == cam) & (df_view['checkin_d'] < d) & (df_view['checkout_d'] > d)]
@@ -203,39 +227,39 @@ if choice == "📅 Harta Disponibilității":
     st.markdown(html + '</tbody></table></div>', unsafe_allow_html=True)
 
     # Detalii & Editare
-    st.markdown("### 🔍 Detalii & Editare")
-    active_ids = sorted(df_view['id'].unique().tolist())
-    id_sel = st.selectbox("Selectează ID-ul de pe hartă:", ["-"] + [str(i) for i in active_ids])
-    
-    if id_sel != "-":
-        r_idx = df_master[df_master['id'] == int(id_sel)].index[0]
-        r = df_master.iloc[r_idx]
+    if not df_view.empty:
+        st.markdown("### 🔍 Detalii & Editare")
+        active_ids = sorted(df_view['id'].unique().tolist())
+        id_sel = st.selectbox("Selectează ID-ul de pe hartă:", ["-"] + [str(i) for i in active_ids])
         
-        with st.container():
-            st.info(f"Editare rezervare: {r['nume']} ({r['camera']})")
-            c1, c2, c3 = st.columns(3)
-            new_tel = c1.text_input("Telefon", r['telefon'])
-            new_pret = c2.number_input("Preț", value=float(r['pret_total']))
-            new_note = c3.text_area("Note", r['note'] if pd.notna(r['note']) else "")
+        if id_sel != "-":
+            r_idx = df_master[df_master['id'] == int(id_sel)].index[0]
+            r = df_master.iloc[r_idx]
             
-            btn_col = st.columns(4)
-            if btn_col[0].button("💾 Salvează"):
-                df_master.at[r_idx, 'telefon'] = new_tel
-                df_master.at[r_idx, 'pret_total'] = new_pret
-                df_master.at[r_idx, 'note'] = new_note
-                update_data(df_master)
-                st.success("Actualizat!"); st.rerun()
-            
-            btn_col[1].download_button("📄 PDF", genereaza_pdf(r), f"Rez_{id_sel}.pdf")
-            
-            wa_msg = urllib.parse.quote(f"Salut {r['nume']}, confirmam rezervarea la Elia.")
-            btn_col[2].markdown(f'<a href="https://api.whatsapp.com/send?phone={new_tel}&text={wa_msg}" target="_blank"><button style="width:100%; border:none; background:#25D366; color:white; padding:5px; border-radius:5px;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
-            
-            if btn_col[3].button("🗑️ Șterge"):
-                # Ștergem rândul din DataFrame
-                df_master = df_master[df_master['id'] != int(id_sel)]
-                update_data(df_master)
-                st.warning("Șters!"); st.rerun()
+            with st.container():
+                st.info(f"Editare rezervare: {r['nume']} ({r['camera']})")
+                c1, c2, c3 = st.columns(3)
+                new_tel = c1.text_input("Telefon", r['telefon'])
+                new_pret = c2.number_input("Preț", value=float(r['pret_total']))
+                new_note = c3.text_area("Note", r['note'] if pd.notna(r['note']) else "")
+                
+                btn_col = st.columns(4)
+                if btn_col[0].button("💾 Salvează"):
+                    df_master.at[r_idx, 'telefon'] = new_tel
+                    df_master.at[r_idx, 'pret_total'] = new_pret
+                    df_master.at[r_idx, 'note'] = new_note
+                    update_data(df_master)
+                    st.success("Actualizat!"); st.rerun()
+                
+                btn_col[1].download_button("📄 PDF", genereaza_pdf(r), f"Rez_{id_sel}.pdf")
+                
+                wa_msg = urllib.parse.quote(f"Salut {r['nume']}, confirmam rezervarea la Elia.")
+                btn_col[2].markdown(f'<a href="https://api.whatsapp.com/send?phone={new_tel}&text={wa_msg}" target="_blank"><button style="width:100%; border:none; background:#25D366; color:white; padding:5px; border-radius:5px;">📱 WhatsApp</button></a>', unsafe_allow_html=True)
+                
+                if btn_col[3].button("🗑️ Șterge"):
+                    df_master = df_master[df_master['id'] != int(id_sel)]
+                    update_data(df_master)
+                    st.warning("Șters!"); st.rerun()
 
 # --- 7. CALENDAR LUNAR ---
 elif choice == "🗓️ Calendar Lunar":
@@ -245,12 +269,16 @@ elif choice == "🗓️ Calendar Lunar":
     luna = c2.selectbox("Luna", list(range(1, 13)), index=datetime.now().month-1)
     
     cal = calendar.monthcalendar(an, luna)
-    df_active = df_master[df_master['status'] != 'Anulat'].copy()
     
     st.markdown("### Grad de ocupare")
     cols = st.columns(7)
-    for z in ["Lu", "Ma", "Mi", "Jo", "Vi", "Sâ", "Du"]: cols[0].parent.write("") # Hack
+    for z in ["Lu", "Ma", "Mi", "Jo", "Vi", "Sâ", "Du"]: cols[0].parent.write("") 
     
+    if not df_master.empty:
+        df_active = df_master[df_master['status'] != 'Anulat'].copy()
+    else:
+        df_active = pd.DataFrame()
+
     for week in cal:
         cols = st.columns(7)
         for i, day in enumerate(week):
@@ -258,17 +286,12 @@ elif choice == "🗓️ Calendar Lunar":
                 cols[i].write("")
             else:
                 curr_date = pd.Timestamp(year=an, month=luna, day=day)
-                # Count occupied rooms for this specific day
-                # Logic: checkin <= day < checkout (stays overnight)
-                # Or checkin <= day <= checkout (occupies partially) -> using < checkout for overnight logic
-                ocupate = df_active[
-                    (df_active['checkin'] <= curr_date) & 
-                    (df_active['checkout'] > curr_date)
-                ]
-                nr_cam = len(ocupate['camera'].unique())
+                nr_cam = 0
+                if not df_active.empty:
+                    ocupate = df_active[(df_active['checkin'] <= curr_date) & (df_active['checkout'] > curr_date)]
+                    nr_cam = len(ocupate['camera'].unique())
                 
-                bg = "#e8f8f5"
-                txt = "#27ae60"
+                bg, txt = "#e8f8f5", "#27ae60"
                 if nr_cam >= 6: bg, txt = "#fadbd8", "#c0392b"
                 elif nr_cam > 0: bg, txt = "#fdebd0", "#d35400"
                 
@@ -282,15 +305,13 @@ elif choice == "🗓️ Calendar Lunar":
 # --- 8. STATISTICI ---
 elif choice == "📊 Statistici":
     st.title("📊 Statistici Financiare")
-    df_active = df_master[df_master['status'] != 'Anulat']
-    
-    if not df_active.empty:
+    if not df_master.empty:
+        df_active = df_master[df_master['status'] != 'Anulat']
         df_active['luna_nume'] = df_active['checkin'].dt.strftime('%B')
         
         c1, c2 = st.columns(2)
         c1.metric("Venituri Totale", f"{df_active['pret_total'].sum():,.0f} RON")
         c2.metric("Număr Rezervări", len(df_active))
-        
         st.subheader("Venituri Lunare")
         st.bar_chart(df_active.groupby('luna_nume')['pret_total'].sum())
     else:
@@ -299,8 +320,10 @@ elif choice == "📊 Statistici":
 # --- 9. LISTĂ ---
 elif choice == "📋 Listă Rezervări":
     st.title("📋 Registru Rezervări")
-    # Afișăm o versiune curată a tabelului
-    st.dataframe(
-        df_master[['id', 'nume', 'telefon', 'camera', 'checkin', 'checkout', 'pret_total', 'note']].sort_values(by='checkin', ascending=False),
-        use_container_width=True
-    )
+    if not df_master.empty:
+        st.dataframe(
+            df_master[['id', 'nume', 'telefon', 'camera', 'checkin', 'checkout', 'pret_total', 'note']].sort_values(by='checkin', ascending=False),
+            use_container_width=True
+        )
+    else:
+        st.info("Lista este goală.")
