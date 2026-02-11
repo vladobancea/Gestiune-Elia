@@ -9,211 +9,113 @@ import base64
 import os
 
 # ==========================================
-# 1. CONFIGURARE PAGINĂ & DESIGN 2026
+# 1. CONFIGURARE PAGINĂ & DESIGN MOBIL
 # ==========================================
 st.set_page_config(
-    page_title="Elia PMS", 
+    page_title="Elia PMS Mobile", 
     page_icon="🏔️", 
     layout="wide", 
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed" # Ascuns pe mobil default
 )
 
-# --- FUNCȚIE PENTRU IMAGINE DE FUNDAL (LOCALĂ) ---
+# --- FUNCȚIE PENTRU IMAGINE DE FUNDAL ---
 def get_base64_of_bin_file(bin_file):
-    with open(bin_file, 'rb') as f:
-        data = f.read()
+    with open(bin_file, 'rb') as f: data = f.read()
     return base64.b64encode(data).decode()
 
 def set_bg_hack(main_bg):
-    '''
-    Setează imaginea de fundal doar pe containerul principal (.stApp)
-    '''
     try:
         bin_str = get_base64_of_bin_file(main_bg)
-        page_bg_img = '''
-        <style>
-        .stApp {
-            background-image: linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.8)), url("data:image/jpg;base64,%s");
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-        }
-        </style>
-        ''' % bin_str
-        st.markdown(page_bg_img, unsafe_allow_html=True)
-    except FileNotFoundError:
-        pass
+        st.markdown(f'''<style>.stApp {{background-image: linear-gradient(rgba(255,255,255,0.7), rgba(255,255,255,0.9)), url("data:image/jpg;base64,{bin_str}"); background-size: cover; background-attachment: fixed;}}</style>''', unsafe_allow_html=True)
+    except: pass
 
-# Imaginea de fundal (Doar în zona principală)
-if os.path.exists("Bucegi National Park 2.jpg"):
-    set_bg_hack("Bucegi National Park 2.jpg")
+if os.path.exists("Bucegi National Park 2.jpg"): set_bg_hack("Bucegi National Park 2.jpg")
 
-# --- CSS MODERN (CLEAN WHITE SIDEBAR) ---
+# --- CSS MODERN & OPTIMIZARE MOBIL ---
 st.markdown("""
     <style>
-    /* IMPORT FONT MODERN */
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&display=swap');
+    html, body, [class*="css"] { font-family: 'Outfit', sans-serif; color: #1f2937; }
 
-    /* RESET GENERAL */
-    html, body, [class*="css"] {
-        font-family: 'Outfit', sans-serif;
-        color: #1f2937;
-    }
-
-    /* --- SIDEBAR STYLING (ALB & CLEAN) --- */
-    [data-testid="stSidebar"] {
-        background-color: #ffffff;
-        border-right: 1px solid #e5e7eb;
-    }
+    /* SIDEBAR ALB */
+    [data-testid="stSidebar"] { background-color: #ffffff; border-right: 1px solid #e5e7eb; }
+    [data-testid="stSidebar"] * { color: #1f2937 !important; }
     
-    /* Textul din Sidebar devine închis la culoare */
-    [data-testid="stSidebar"] * {
-        color: #1f2937 !important;
-    }
+    /* CARDURI */
+    .info-card { background: rgba(255, 255, 255, 0.95); padding: 20px; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid #f1f5f9; }
 
-    /* LOGO STYLING */
-    [data-testid="stSidebar"] img {
-        margin-top: 10px;
-        margin-bottom: 20px;
-        transition: transform 0.3s ease;
-        padding: 5px;
-    }
-    [data-testid="stSidebar"] img:hover {
-        transform: scale(1.05);
-    }
-    
-    /* Titluri Sidebar */
-    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
-        color: #1f2937 !important; /* Negru */
-    }
-
-    /* TITLURI GENERALE */
-    h1, h2, h3 {
-        font-weight: 700 !important;
-        background: -webkit-linear-gradient(45deg, #2563eb, #7c3aed);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        padding-bottom: 10px;
-    }
-
-    /* CARDURI INFORMATIVE (Glassmorphism) */
-    .info-card {
-        background: rgba(255, 255, 255, 0.9); 
-        backdrop-filter: blur(15px);
-        padding: 25px;
-        border-radius: 20px;
-        border: 1px solid rgba(255,255,255,1);
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-        margin-bottom: 20px;
-        transition: transform 0.2s;
-    }
-    .info-card:hover {
-        transform: scale(1.01);
-    }
-
-    /* TABEL HARTA */
+    /* --- HARTA (Tabel Scrollabil) --- */
     .scroll-container { 
         overflow-x: auto; 
-        padding-bottom: 20px; 
+        padding-bottom: 10px; 
+        background: rgba(255, 255, 255, 0.9);
         border-radius: 15px;
-        background: rgba(255, 255, 255, 0.95);
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        padding: 10px;
-        border: 1px solid #f1f5f9;
     }
-    .custom-table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1000px; table-layout: fixed; }
+    .custom-table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 800px; } /* Min-width forteaza scroll */
     
-    /* Header Tabel */
     .custom-table th { 
-        background: #f8fafc; 
-        color: #475569; 
-        font-size: 12px; 
-        text-transform: uppercase; 
-        letter-spacing: 1px;
-        padding: 15px; 
-        border-bottom: 2px solid #e2e8f0;
-        position: sticky; top: 0; z-index: 5; 
+        background: #f8fafc; color: #475569; padding: 10px; border-bottom: 2px solid #e2e8f0; 
+        font-size: 11px; text-transform: uppercase;
     }
-    
-    /* Celule */
-    .custom-table td { 
-        border-bottom: 1px solid #f1f5f9; 
-        padding: 0 !important; 
-        height: 60px; 
-        vertical-align: middle; 
-    }
-    
-    /* Sticky Column */
-    .sticky-col { 
-        position: sticky; left: 0; 
+    .custom-table td { border-bottom: 1px solid #f1f5f9; height: 50px; vertical-align: middle; padding: 0 !important; }
+
+    /* MODIFICARE CERUTĂ: Sticky Col a fost scos pentru a dispărea la scroll */
+    .first-col { 
         background: #ffffff; 
-        z-index: 10; 
         font-weight: 600; 
         color: #1e293b;
         border-right: 2px solid #f1f5f9 !important; 
-        width: 140px; 
-        box-shadow: 4px 0 5px -2px rgba(0,0,0,0.05);
-        padding-left: 15px !important;
+        width: 100px; 
+        padding-left: 10px !important;
+        /* position: sticky; left: 0; -> AM SCOS ASTA CA SĂ DISPARĂ */
     }
 
-    /* BANDA CALENDAR */
-    .calendar-box { 
-        height: 40px; width: 100%; display: flex; align-items: center; justify-content: center; 
-        font-size: 12px; font-weight: 700; color: white; border-radius: 0; 
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.4);
-    }
-
-    /* INPUT-URI MODERNE */
-    .stTextInput input, .stNumberInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] {
-        border-radius: 12px !important;
-        background-color: #ffffff !important;
-        border: 1px solid #e2e8f0 !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
-    }
-
-    /* CULORI STATUS */
-    .bg-liber { background: #f8fafc; border-radius: 8px; height: 30px; width: 30px; margin: auto; border: 1px dashed #cbd5e1; }
+    /* BANDA STATUS */
+    .calendar-box { height: 35px; width: 100%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: white; }
+    .bg-liber { background: #f1f5f9; border-radius: 50%; height: 10px; width: 10px; margin: auto; }
     .bg-ocupat { background: #ef4444; width: 100.5%; }
-    .bg-checkin { background: linear-gradient(90deg, rgba(255,255,255,0) 0%, #10b981 15%, #ef4444 85%); width: 100.5%; border-radius: 10px 0 0 10px; }
-    .bg-checkout { background: linear-gradient(90deg, #ef4444 15%, #10b981 85%, rgba(255,255,255,0) 100%); width: 100.5%; border-radius: 0 10px 10px 0; }
-    .bg-schimb { background: linear-gradient(90deg, #ef4444 45%, #ffffff 50%, #10b981 50%, #ef4444 55%); width: 100.5%; color: #111; }
+    .bg-checkin { background: linear-gradient(90deg, transparent 0%, #10b981 15%, #ef4444 85%); width: 100.5%; border-radius: 8px 0 0 8px; }
+    .bg-checkout { background: linear-gradient(90deg, #ef4444 15%, #10b981 85%, transparent 100%); width: 100.5%; border-radius: 0 8px 8px 0; }
+    .bg-schimb { background: linear-gradient(90deg, #ef4444 45%, #ffffff 50%, #10b981 50%, #ef4444 55%); width: 100.5%; color: #000; }
 
-    /* CARD CALENDAR LUNAR */
-    .month-day-card {
-        border-radius: 12px; padding: 12px; text-align: center; transition: all 0.2s; height: 80px;
-        display: flex; flex-direction: column; justify-content: center; align-items: center;
-        background: #ffffff;
+    /* --- CALENDAR LUNAR GRID (CSS GRID) --- */
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 5px;
+        margin-top: 10px;
     }
-    .month-day-card:hover { transform: translateY(-3px); box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
+    .cal-day-header { text-align: center; font-weight: bold; font-size: 12px; color: #64748b; margin-bottom: 5px; }
+    .cal-day-cell {
+        background: white; border-radius: 8px; padding: 5px; min-height: 50px;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        border: 1px solid #e2e8f0; font-size: 14px; font-weight: bold;
+    }
+    /* Culori ocupare */
+    .occ-low { background: #ecfdf5; border-color: #10b981; color: #065f46; }
+    .occ-med { background: #ffedd5; border-color: #f97316; color: #9a3412; }
+    .occ-high { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
+    
     </style>
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CONEXIUNE & LOGICĂ
+# 2. LOGICĂ & DB
 # ==========================================
 conn = st.connection("gsheets", type=GSheetsConnection)
-
-CAMERE_INFO = {
-    "Camera 1": 200, "Camera 2": 200, 
-    "Camera 3": 250, "Camera 4": 250, 
-    "Camera 5": 300, "Camera 6": 350
-}
+CAMERE_INFO = {"Camera 1": 200, "Camera 2": 200, "Camera 3": 250, "Camera 4": 250, "Camera 5": 300, "Camera 6": 350}
 
 def get_data():
     try:
         df = conn.read(worksheet="Rezervari", ttl=0)
-        required_cols = ['id', 'nume', 'telefon', 'camera', 'checkin', 'checkout', 'status', 'pret_total', 'note']
-        if df.empty or not all(col in df.columns for col in required_cols): return pd.DataFrame(columns=required_cols)
-        df['checkin'] = pd.to_datetime(df['checkin'], errors='coerce')
-        df['checkout'] = pd.to_datetime(df['checkout'], errors='coerce')
+        req = ['id', 'nume', 'telefon', 'camera', 'checkin', 'checkout', 'status', 'pret_total', 'note']
+        if df.empty or not all(c in df.columns for c in req): return pd.DataFrame(columns=req)
+        df['checkin'] = pd.to_datetime(df['checkin'], errors='coerce'); df['checkout'] = pd.to_datetime(df['checkout'], errors='coerce')
         df = df.dropna(subset=['checkin', 'checkout'])
         df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0).astype(int)
         df['pret_total'] = pd.to_numeric(df['pret_total'], errors='coerce').fillna(0.0)
         return df
-    except Exception as e:
-        st.error(f"Eroare date: {e}"); return pd.DataFrame(columns=['id', 'nume', 'telefon', 'camera', 'checkin', 'checkout', 'status', 'pret_total', 'note'])
+    except: return pd.DataFrame(columns=['id', 'nume', 'telefon', 'camera', 'checkin', 'checkout', 'status', 'pret_total', 'note'])
 
 def update_data(df):
     try:
@@ -221,253 +123,217 @@ def update_data(df):
         df_s['checkin'] = df_s['checkin'].dt.strftime('%Y-%m-%d %H:%M:%S')
         df_s['checkout'] = df_s['checkout'].dt.strftime('%Y-%m-%d %H:%M:%S')
         conn.update(worksheet="Rezervari", data=df_s)
-    except Exception as e: st.error(f"Err: {e}")
+    except Exception as e: st.error(str(e))
 
-def este_disponibila(df, camera, start, end, exclude_id=None):
+def este_disponibila(df, camera, start, end):
     if df.empty: return True
     mask = (df['status'] != 'Anulat') & (df['camera'] == camera)
     conflict = mask & ~( (df['checkout'] <= start) | (df['checkin'] >= end) )
-    if exclude_id: conflict = conflict & (df['id'] != exclude_id)
     return df[conflict].empty
 
 def genereaza_pdf(r):
     pdf = FPDF(); pdf.add_page(); pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "CONFIRMARE", ln=True, align='C'); pdf.ln(10)
     pdf.set_font("Arial", '', 12)
-    pdf.cell(0, 10, f"Client: {r['nume']}", ln=True); pdf.cell(0, 10, f"Tel: {r['telefon']}", ln=True)
-    pdf.cell(0, 10, f"Camera: {r['camera']}", ln=True); pdf.cell(0, 10, f"Total: {r['pret_total']} RON", ln=True)
+    pdf.cell(0, 10, f"Client: {r['nume']}", ln=True); pdf.cell(0, 10, f"Camera: {r['camera']}", ln=True)
+    pdf.cell(0, 10, f"Total: {r['pret_total']} RON", ln=True)
     return pdf.output(dest='S').encode('latin-1')
 
 # ==========================================
-# 3. SIDEBAR (LOGO & MENIU)
+# 3. SIDEBAR & NAV
 # ==========================================
-
-# LOGO PROPRIU
-if os.path.exists("LOGO final.png"):
-    st.sidebar.image("LOGO final.png", use_container_width=True)
-else:
-    # Fallback dacă nu se încarcă poza
-    st.sidebar.markdown("### 🏔️ Elia Management")
-
-if st.sidebar.button("✨ Rezervare Nouă", use_container_width=True, type="primary"):
-    st.session_state['show_add_modal'] = True
-
-menu = {
-    "📅 Harta": "Harta",
-    "🗓️ Calendar": "Calendar Lunar",
-    "📊 Statistici": "Statistici", 
-    "📋 Registru": "Listă Rezervări"
-}
-choice = st.sidebar.radio("Navigare", list(menu.keys()), format_func=lambda x: x)
+if os.path.exists("LOGO final.png"): st.sidebar.image("LOGO final.png", use_container_width=True)
+st.sidebar.markdown("### 🏔️ Elia PMS")
+if st.sidebar.button("✨ Rezervare Nouă", use_container_width=True, type="primary"): st.session_state['show_add_modal'] = True
+menu = {"📅 Harta": "Harta", "🗓️ Calendar": "Calendar", "📊 Statistici": "Statistici", "📋 Registru": "Lista"}
+choice = st.sidebar.radio("Meniu", list(menu.keys()), format_func=lambda x: x)
 sel_page = menu[choice]
 df_master = get_data()
 
 # ==========================================
-# 4. MODAL ADAUGARE (Clean UI)
+# 4. MODAL ADAUGARE
 # ==========================================
 if st.session_state.get('show_add_modal', False):
     st.markdown("---")
     with st.container():
-        st.markdown("<div class='info-card'><h3>✨ Adaugă Rezervare Rapidă</h3>", unsafe_allow_html=True)
+        st.markdown("<div class='info-card'><h3>✨ Adaugă Rezervare</h3>", unsafe_allow_html=True)
         with st.form("quick_add"):
             c1, c2 = st.columns(2)
-            nume = c1.text_input("Nume Client", placeholder="ex: Popescu Ion")
-            tel = c2.text_input("Telefon", placeholder="07xx...")
-            cam = c1.selectbox("Cameră", list(CAMERE_INFO.keys()) + ["Toate (Grup)"])
-            c3, c4 = st.columns(2)
-            d1 = c3.date_input("Check-in", date.today())
-            d2 = c4.date_input("Check-out", date.today() + timedelta(1))
-            
-            pret_def = sum(CAMERE_INFO.values()) if "Grup" in cam else CAMERE_INFO.get(cam, 0)
-            pret = st.number_input("Preț Total (RON)", value=float(pret_def))
-            note = st.text_area("Note Speciale", placeholder="ex: pat suplimentar...")
-            
-            b1, b2 = st.columns([1, 4])
-            if b1.form_submit_button("🚀 Salvează"):
-                t1, t2 = datetime.combine(d1, time(15, 0)), datetime.combine(d2, time(11, 0))
-                camere_target = list(CAMERE_INFO.keys()) if "Grup" in cam else [cam]
-                if all(este_disponibila(df_master, c, t1, t2) for c in camere_target):
+            nume = c1.text_input("Nume", placeholder="Client")
+            tel = c2.text_input("Tel", placeholder="07xx")
+            cam = c1.selectbox("Cameră", list(CAMERE_INFO.keys()) + ["Toate"])
+            d1 = c2.date_input("In", date.today()); d2 = c2.date_input("Out", date.today()+timedelta(1))
+            pret = st.number_input("Preț Total", value=float(sum(CAMERE_INFO.values()) if "Toate" in cam else CAMERE_INFO.get(cam, 0)))
+            note = st.text_area("Note")
+            if st.form_submit_button("🚀 Salvează"):
+                t1, t2 = datetime.combine(d1, time(15,0)), datetime.combine(d2, time(11,0))
+                cms = list(CAMERE_INFO.keys()) if "Toate" in cam else [cam]
+                if all(este_disponibila(df_master, c, t1, t2) for c in cms):
                     new_rows = []
                     max_id = df_master['id'].max() if not df_master.empty else 0
-                    for i, c_name in enumerate(camere_target):
-                        p_part = pret / 6 if "Grup" in cam else pret
-                        new_rows.append({"id": int(max_id + 1 + i), "nume": nume, "telefon": tel, "camera": c_name, "checkin": t1, "checkout": t2, "status": "Confirmat", "pret_total": p_part, "note": note})
-                    updated_df = pd.concat([df_master, pd.DataFrame(new_rows)], ignore_index=True)
-                    update_data(updated_df)
-                    st.session_state['show_add_modal'] = False; st.toast("✅ Rezervare Salvată!", icon="🎉"); st.rerun()
-                else: st.error("⚠️ Conflict! Camera este ocupată.")
-            if b2.form_submit_button("❌ Anulează"):
-                st.session_state['show_add_modal'] = False; st.rerun()
+                    for i, cn in enumerate(cms):
+                        new_rows.append({"id": int(max_id+1+i), "nume": nume, "telefon": tel, "camera": cn, "checkin": t1, "checkout": t2, "status": "Confirmat", "pret_total": pret/len(cms), "note": note})
+                    update_data(pd.concat([df_master, pd.DataFrame(new_rows)], ignore_index=True))
+                    st.session_state['show_add_modal'] = False; st.toast("Salvat!"); st.rerun()
+                else: st.error("Ocupat!")
+            if st.form_submit_button("Închide"): st.session_state['show_add_modal'] = False; st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
-# 5. HARTA (Dashboard Look)
+# 5. HARTA (OPTIMIZARE MOBIL)
 # ==========================================
 if sel_page == "Harta":
-    st.markdown("""
-    <div style="background: rgba(255,255,255,0.85); backdrop-filter: blur(10px); padding: 20px; border-radius: 15px; border-left: 6px solid #7c3aed; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-        <h1 style="margin:0; padding:0; background:none; -webkit-text-fill-color: #1f2937;">🗺️ Disponibilitate Camere</h1>
-        <p style="margin:0; color: #4b5563;">Status în timp real pentru Pensiunea Elia</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    c_date, c_filtru = st.columns([1, 3])
-    d_start = c_date.date_input("Vezi începând cu:", date.today())
-    
+    st.markdown("<h2 style='text-align:center'>🗺️ Harta</h2>", unsafe_allow_html=True)
+    d_start = st.date_input("Data:", date.today())
     zile = [d_start + timedelta(days=i) for i in range(14)]
-    d_end_view = zile[-1]
     
-    if not df_master.empty:
-        df_view = df_master[df_master['status'] != 'Anulat'].copy()
-        df_view['checkin_d'] = df_view['checkin'].dt.date
-        df_view['checkout_d'] = df_view['checkout'].dt.date
-    else: df_view = pd.DataFrame(columns=df_master.columns)
+    df_v = df_master[df_master['status']!='Anulat'].copy() if not df_master.empty else pd.DataFrame(columns=df_master.columns)
+    if not df_v.empty:
+        df_v['ci'] = df_v['checkin'].dt.date; df_v['co'] = df_v['checkout'].dt.date
 
-    html = '<div class="scroll-container"><table class="custom-table"><thead><tr><th class="sticky-col">Cameră</th>'
-    for d in zile: html += f'<th>{d.strftime("%d")}<br><small>{d.strftime("%b")}</small></th>'
+    # Construire Tabel HTML FĂRĂ STICKY
+    html = '<div class="scroll-container"><table class="custom-table"><thead><tr><th class="first-col">Cam</th>'
+    for d in zile: html += f'<th>{d.strftime("%d")}<br>{d.strftime("%b")}</th>'
     html += '</tr></thead><tbody>'
 
     for cam in CAMERE_INFO.keys():
-        html += f'<tr><td class="sticky-col">{cam}</td>'
+        html += f'<tr><td class="first-col">{cam}</td>'
         for d in zile:
-            if df_view.empty: html += f'<td><div class="bg-liber"></div></td>'; continue
+            if df_v.empty: html += '<td><div class="bg-liber"></div></td>'; continue
             
-            r_out = df_view[(df_view['camera'] == cam) & (df_view['checkout_d'] == d)]
-            r_in = df_view[(df_view['camera'] == cam) & (df_view['checkin_d'] == d)]
-            r_stay = df_view[(df_view['camera'] == cam) & (df_view['checkin_d'] < d) & (df_view['checkout_d'] > d)]
+            # Logică vizuală simplificată
+            r_out = df_v[(df_v['camera']==cam) & (df_v['co']==d)]
+            r_in = df_v[(df_v['camera']==cam) & (df_v['ci']==d)]
+            r_stay = df_v[(df_v['camera']==cam) & (df_v['ci']<d) & (df_v['co']>d)]
             
-            bg, label = "bg-liber", "" 
-            
-            if not r_out.empty and not r_in.empty:
-                bg, label = "bg-schimb", f"{int(r_out.iloc[0]['id'])} ⟷ {int(r_in.iloc[0]['id'])}"
-            elif not r_out.empty:
-                bg = "bg-checkout"; r = r_out.iloc[0]
-                if (r['checkout_d'] - r['checkin_d']).days <= 1: label = str(int(r['id']))
-                else: 
-                     v_s, v_e = max(r['checkin_d'], d_start), min(r['checkout_d'], d_end_view)
-                     if d == v_s + timedelta(days=(v_e - v_s).days // 2): label = str(int(r['id']))
-            elif not r_in.empty:
-                bg = "bg-checkin"; r = r_in.iloc[0]
-                if (r['checkout_d'] - r['checkin_d']).days <= 1: label = str(int(r['id']))
-                else:
-                     v_s, v_e = max(r['checkin_d'], d_start), min(r['checkout_d'], d_end_view)
-                     if d == v_s + timedelta(days=(v_e - v_s).days // 2): label = str(int(r['id']))
-            elif not r_stay.empty:
-                bg = "bg-ocupat"; r = r_stay.iloc[0]
-                v_s, v_e = max(r['checkin_d'], d_start), min(r['checkout_d'], d_end_view)
-                if d == v_s + timedelta(days=(v_e - v_s).days // 2): label = str(int(r['id']))
+            bg, lbl = "bg-liber", ""
+            if not r_out.empty and not r_in.empty: bg, lbl = "bg-schimb", f"{int(r_out.iloc[0]['id'])}↔{int(r_in.iloc[0]['id'])}"
+            elif not r_out.empty: bg, lbl = "bg-checkout", str(int(r_out.iloc[0]['id']))
+            elif not r_in.empty: bg, lbl = "bg-checkin", str(int(r_in.iloc[0]['id']))
+            elif not r_stay.empty: bg, lbl = "bg-ocupat", str(int(r_stay.iloc[0]['id']))
             
             if bg == "bg-liber": html += f'<td><div class="{bg}"></div></td>'
-            else: html += f'<td><div class="calendar-box {bg}">{label}</div></td>'
+            else: html += f'<td><div class="calendar-box {bg}">{lbl}</div></td>'
         html += '</tr>'
     st.markdown(html + '</tbody></table></div>', unsafe_allow_html=True)
 
-    if not df_view.empty:
-        st.markdown("<br>", unsafe_allow_html=True)
-        active_ids = sorted(df_view['id'].unique().tolist())
-        id_sel = st.selectbox("🛠️ Administrează Rezervare (Selectează ID):", ["-"] + [str(i) for i in active_ids])
+    # --- SELECTARE ID CU TASTATURĂ ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container():
+        st.markdown("<div class='info-card'>", unsafe_allow_html=True)
+        c1, c2 = st.columns([1, 2])
+        # AICI E MODIFICAREA PENTRU TASTATURA
+        search_id = c1.number_input("🔎 Scrie ID (Tastatură):", min_value=0, step=1, value=0)
         
-        if id_sel != "-":
-            try:
-                r_idx = df_master[df_master['id'] == int(id_sel)].index[0]; r = df_master.iloc[r_idx]
-                st.markdown(f"""
-                <div class="info-card">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <h2 style="margin:0; background:none; -webkit-text-fill-color: #1f2937;">👤 {r['nume']}</h2>
-                        <span style="background:#7c3aed; color:white; padding:5px 10px; border-radius:10px; font-weight:bold;">ID: {id_sel}</span>
-                    </div>
-                    <p style="color:#6b7280; margin-top:5px;">🛏️ {r['camera']} &nbsp; | &nbsp; 📅 {r['checkin'].strftime('%d %b')} - {r['checkout'].strftime('%d %b')}</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                c1, c2, c3 = st.columns(3)
-                n_tel = c1.text_input("Telefon", r['telefon'])
-                n_pret = c2.number_input("Preț", value=float(r['pret_total']))
-                n_note = c3.text_area("Note", r['note'] if pd.notna(r['note']) else "")
-                
-                b1, b2, b3, b4 = st.columns(4)
-                if b1.button("💾 Actualizează"):
-                    df_master.at[r_idx, 'telefon'] = n_tel; df_master.at[r_idx, 'pret_total'] = n_pret; df_master.at[r_idx, 'note'] = n_note
-                    update_data(df_master); st.toast("Actualizat!"); st.rerun()
-                
-                b2.download_button("📄 PDF Confirmare", genereaza_pdf(r), f"Rez_{id_sel}.pdf")
-                
-                wa = urllib.parse.quote(f"Salut {r['nume']}, te așteptăm la Elia!")
-                b3.markdown(f'<a href="https://api.whatsapp.com/send?phone={n_tel}&text={wa}" target="_blank"><button style="width:100%;background:#10b981;color:white;border:none;padding:10px;border-radius:12px;font-weight:bold;cursor:pointer;box-shadow: 0 4px 6px rgba(0,0,0,0.1);">💬 WhatsApp</button></a>', unsafe_allow_html=True)
-                
-                if b4.button("🗑️ Șterge", type="primary"):
-                    df_master = df_master[df_master['id'] != int(id_sel)]; update_data(df_master); st.toast("Șters!"); st.rerun()
-            except: pass
+        selected_r = None
+        if search_id > 0 and not df_master.empty:
+            found = df_master[df_master['id'] == search_id]
+            if not found.empty: selected_r = found.iloc[0]
+        
+        if selected_r is not None:
+            r = selected_r
+            st.markdown(f"**👤 {r['nume']}** | {r['camera']}")
+            st.markdown(f"📅 {r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')}")
+            
+            col_act1, col_act2 = st.columns(2)
+            if col_act1.button("🗑️ Șterge"):
+                df_master = df_master[df_master['id'] != r['id']]; update_data(df_master); st.rerun()
+            wa = urllib.parse.quote(f"Salut {r['nume']}, confirmare rezervare.")
+            col_act2.markdown(f'<a href="https://api.whatsapp.com/send?phone={r["telefon"]}&text={wa}" target="_blank"><button style="width:100%;background:#25D366;color:white;border:none;padding:8px;border-radius:5px">WhatsApp</button></a>', unsafe_allow_html=True)
+        elif search_id > 0:
+            st.warning("ID inexistent.")
+        else:
+            st.info("Tastează ID-ul unei rezervări de pe hartă.")
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
-# 6. CALENDAR LUNAR (Grid Modern)
+# 6. CALENDAR LUNAR (OPTIMIZAT MOBIL - CSS GRID)
 # ==========================================
-elif sel_page == "Calendar Lunar":
-    st.markdown("""
-    <div style="background: rgba(255,255,255,0.85); backdrop-filter: blur(10px); padding: 20px; border-radius: 15px; border-left: 6px solid #2563eb; margin-bottom: 20px;">
-        <h1 style="margin:0; padding:0; background:none; -webkit-text-fill-color: #1f2937;">🗓️ Calendar General</h1>
-    </div>
-    """, unsafe_allow_html=True)
-    c1, c2 = st.columns([1,3]); an = c1.selectbox("An", [2024, 2025, 2026], index=1); luna = c2.selectbox("Luna", list(range(1, 13)), index=datetime.now().month-1)
+elif sel_page == "Calendar":
+    st.markdown("### 🗓️ Calendar General")
+    c1, c2 = st.columns([1,3]); an = c1.selectbox("An", [2024, 2025, 2026], index=1); luna = c2.selectbox("Luna", range(1, 13), index=datetime.now().month-1)
     
     cal = calendar.monthcalendar(an, luna)
-    cols = st.columns(7)
-    for i, z in enumerate(["Lu", "Ma", "Mi", "Jo", "Vi", "Sâ", "Du"]):
-        cols[i].markdown(f"<div style='text-align:center; color:#1e293b; font-weight:bold; margin-bottom:10px; background:rgba(255,255,255,0.8); padding:5px; border-radius:5px;'>{z}</div>", unsafe_allow_html=True)
     
-    df_act = df_master[df_master['status'] != 'Anulat'].copy() if not df_master.empty else pd.DataFrame()
+    # CSS GRID HEADER
+    html_cal = '<div class="calendar-grid">'
+    for z in ["Lu", "Ma", "Mi", "Jo", "Vi", "Sâ", "Du"]: html_cal += f'<div class="cal-day-header">{z}</div>'
+    
+    df_act = df_master[df_master['status']!='Anulat'].copy() if not df_master.empty else pd.DataFrame()
     if not df_act.empty:
-        df_act['checkin_n'] = df_act['checkin'].dt.normalize(); df_act['checkout_n'] = df_act['checkout'].dt.normalize()
+        df_act['cin'] = df_act['checkin'].dt.normalize(); df_act['con'] = df_act['checkout'].dt.normalize()
 
     for week in cal:
-        cols = st.columns(7)
-        for i, day in enumerate(week):
-            if day == 0: cols[i].write(""); continue
-            curr = pd.Timestamp(year=an, month=luna, day=day)
+        for day in week:
+            if day == 0: html_cal += '<div></div>'; continue
+            
+            curr = pd.Timestamp(an, luna, day)
             nr = 0
             if not df_act.empty:
-                nr = len(df_act[(df_act['checkin_n'] <= curr) & (df_act['checkout_n'] > curr)]['camera'].unique())
+                nr = len(df_act[(df_act['cin'] <= curr) & (df_act['con'] > curr)]['camera'].unique())
             
-            bg = "#ffffff"; border = "#e2e8f0"; txt = "#1e293b"
-            if nr >= 6: bg = "#fee2e2"; border = "#ef4444"; txt = "#991b1b"
-            elif nr > 0: bg = "#ffedd5"; border = "#f97316"; txt = "#9a3412"
-            else: bg = "#ecfdf5"; border = "#10b981"; txt = "#065f46"
+            cls = "occ-low"
+            if nr >= 6: cls = "occ-high"
+            elif nr > 0: cls = "occ-med"
             
-            cols[i].markdown(f"""
-            <div class="month-day-card" style="background:{bg}; border:1px solid {border};">
-                <span style="font-size:20px; font-weight:800; color:{txt}">{day}</span>
-                <span style="font-size:12px; color:{txt}; opacity:0.8;">{nr}/6 Cam</span>
-            </div>
-            """, unsafe_allow_html=True)
+            html_cal += f'<div class="cal-day-cell {cls}">{day}<span style="font-size:10px; font-weight:normal">{nr}/6</span></div>'
+    
+    html_cal += '</div>'
+    st.markdown(html_cal, unsafe_allow_html=True)
 
 # ==========================================
-# 7. STATISTICI & LISTA (Cards)
+# 7. STATISTICI AVANSATE
 # ==========================================
 elif sel_page == "Statistici":
-    st.markdown("""
-    <div style="background: rgba(255,255,255,0.85); backdrop-filter: blur(10px); padding: 20px; border-radius: 15px; border-left: 6px solid #10b981; margin-bottom: 20px;">
-        <h1 style="margin:0; padding:0; background:none; -webkit-text-fill-color: #1f2937;">📊 Rapoarte Financiare</h1>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("### 📊 Performanță")
     
     if not df_master.empty:
-        df_a = df_master[df_master['status'] != 'Anulat'].copy()
-        df_a['luna'] = df_a['checkin'].dt.strftime('%B')
+        df_s = df_master[df_master['status'] != 'Anulat'].copy()
         
-        c1, c2, c3 = st.columns(3)
-        c1.markdown(f"<div class='info-card'><h3 style='margin:0; background:none; -webkit-text-fill-color: #059669;'>💰 {df_a['pret_total'].sum():,.0f} RON</h3><p>Total Încasări</p></div>", unsafe_allow_html=True)
-        c2.markdown(f"<div class='info-card'><h3 style='margin:0; background:none; -webkit-text-fill-color: #2563eb;'>🔖 {len(df_a)}</h3><p>Rezervări Totale</p></div>", unsafe_allow_html=True)
-        c3.markdown(f"<div class='info-card'><h3 style='margin:0; background:none; -webkit-text-fill-color: #7c3aed;'>📈 {df_a['pret_total'].mean():,.0f} RON</h3><p>Medie / Sejur</p></div>", unsafe_allow_html=True)
+        # 1. Total Incasari
+        total_rev = df_s['pret_total'].sum()
         
-        st.subheader("Evoluție Lunară")
-        st.bar_chart(df_a.groupby('luna')['pret_total'].sum())
+        # 2. Calcul Grad Ocupare (Algoritm)
+        # Expunem toate zilele ocupate
+        occupied_dates = []
+        for _, row in df_s.iterrows():
+            # Range de zile (fara ultima zi de checkout)
+            d_range = pd.date_range(row['checkin'], row['checkout'] - timedelta(days=1))
+            occupied_dates.extend(d_range)
+        
+        if occupied_dates:
+            occ_series = pd.Series(occupied_dates)
+            # Grupăm pe luni
+            occ_by_month = occ_series.groupby(occ_series.dt.to_period("M")).count()
+            
+            # Pregătim datele pentru grafic
+            stats_data = []
+            for period, occupied_nights in occ_by_month.items():
+                days_in_month = period.days_in_month
+                total_capacity = days_in_month * 6 # 6 camere
+                rate = (occupied_nights / total_capacity) * 100
+                stats_data.append({"Luna": period.strftime("%b %Y"), "Grad Ocupare %": round(rate, 1)})
+            
+            df_stats = pd.DataFrame(stats_data)
+        else:
+            df_stats = pd.DataFrame()
+
+        # UI Cards
+        c1, c2 = st.columns(2)
+        c1.markdown(f"<div class='info-card'><h2 style='color:#059669; margin:0'>{total_rev:,.0f} RON</h2><small>Total Încasări</small></div>", unsafe_allow_html=True)
+        
+        avg_occ = df_stats["Grad Ocupare %"].mean() if not df_stats.empty else 0
+        c2.markdown(f"<div class='info-card'><h2 style='color:#2563eb; margin:0'>{avg_occ:.1f}%</h2><small>Grad Mediu Anual</small></div>", unsafe_allow_html=True)
+        
+        if not df_stats.empty:
+            st.subheader("Grad de Ocupare Lunar (%)")
+            st.bar_chart(df_stats.set_index("Luna"))
+            
+            st.subheader("Încasări Lunare")
+            df_s['luna'] = df_s['checkin'].dt.strftime('%Y-%m')
+            st.bar_chart(df_s.groupby('luna')['pret_total'].sum())
+
     else: st.info("Nu există date.")
 
-elif sel_page == "Listă Rezervări":
-    st.markdown("""
-    <div style="background: rgba(255,255,255,0.85); backdrop-filter: blur(10px); padding: 20px; border-radius: 15px; border-left: 6px solid #f59e0b; margin-bottom: 20px;">
-        <h1 style="margin:0; padding:0; background:none; -webkit-text-fill-color: #1f2937;">📋 Registru Digital</h1>
-    </div>
-    """, unsafe_allow_html=True)
-    if not df_master.empty:
-        st.dataframe(df_master[['id', 'nume', 'telefon', 'camera', 'checkin', 'checkout', 'pret_total', 'note']].sort_values(by='checkin', ascending=False), use_container_width=True)
-    else: st.info("Baza de date este goală.")
+elif sel_page == "Lista":
+    st.markdown("### 📋 Registru")
+    if not df_master.empty: st.dataframe(df_master[['id','nume','camera','checkin','pret_total']].sort_values(by='checkin', ascending=False), use_container_width=True)
