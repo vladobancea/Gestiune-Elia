@@ -26,14 +26,14 @@ def get_base64_of_bin_file(bin_file):
 
 def set_bg_hack(main_bg):
     '''
-    O funcție care setează o imagine locală ca fundal
+    Setează imaginea de fundal doar pe containerul principal (.stApp)
     '''
     try:
         bin_str = get_base64_of_bin_file(main_bg)
         page_bg_img = '''
         <style>
         .stApp {
-            background-image: linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.6)), url("data:image/jpg;base64,%s");
+            background-image: linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.8)), url("data:image/jpg;base64,%s");
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
@@ -43,15 +43,13 @@ def set_bg_hack(main_bg):
         ''' % bin_str
         st.markdown(page_bg_img, unsafe_allow_html=True)
     except FileNotFoundError:
-        # Fallback dacă nu găsește poza
         pass
 
-# Setăm imaginea de fundal (Bucegi)
-# Asigură-te că fișierul este lângă app.py
+# Imaginea de fundal (Doar în zona principală)
 if os.path.exists("Bucegi National Park 2.jpg"):
     set_bg_hack("Bucegi National Park 2.jpg")
 
-# --- CSS MODERN (THEME 2026 - Ajustat pentru fundal) ---
+# --- CSS MODERN (CLEAN WHITE SIDEBAR) ---
 st.markdown("""
     <style>
     /* IMPORT FONT MODERN */
@@ -63,48 +61,50 @@ st.markdown("""
         color: #1f2937;
     }
 
+    /* --- SIDEBAR STYLING (ALB & CLEAN) --- */
+    [data-testid="stSidebar"] {
+        background-color: #ffffff;
+        border-right: 1px solid #e5e7eb;
+    }
+    
+    /* Textul din Sidebar devine închis la culoare */
+    [data-testid="stSidebar"] * {
+        color: #1f2937 !important;
+    }
+
     /* LOGO STYLING */
     [data-testid="stSidebar"] img {
-        margin-top: 20px;
+        margin-top: 10px;
         margin-bottom: 20px;
         transition: transform 0.3s ease;
-        background: rgba(255, 255, 255, 0.1); /* Ușor fundal sub logo dacă e transparent */
-        padding: 10px;
-        border-radius: 10px;
+        padding: 5px;
     }
     [data-testid="stSidebar"] img:hover {
         transform: scale(1.05);
     }
-
-    /* SIDEBAR (Gradient Întunecat - Semi-transparent pentru modernitate) */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 59, 0.98) 100%);
-        backdrop-filter: blur(10px);
-        border-right: 1px solid rgba(255,255,255,0.1);
-    }
-    [data-testid="stSidebar"] * {
-        color: #e2e8f0 !important;
-    }
     
-    /* TITLURI */
+    /* Titluri Sidebar */
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+        color: #1f2937 !important; /* Negru */
+    }
+
+    /* TITLURI GENERALE */
     h1, h2, h3 {
         font-weight: 700 !important;
-        background: -webkit-linear-gradient(45deg, #2563eb, #7c3aed); /* Albastru mai puternic pentru contrast */
+        background: -webkit-linear-gradient(45deg, #2563eb, #7c3aed);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         padding-bottom: 10px;
-        text-shadow: 0px 2px 4px rgba(255,255,255,0.5);
     }
 
-    /* CARDURI INFORMATIVE (Glassmorphism Puternic) */
-    /* Fundal alb mai opac pentru a se citi textul peste poza de fundal */
+    /* CARDURI INFORMATIVE (Glassmorphism) */
     .info-card {
-        background: rgba(255, 255, 255, 0.85); 
+        background: rgba(255, 255, 255, 0.9); 
         backdrop-filter: blur(15px);
         padding: 25px;
         border-radius: 20px;
-        border: 1px solid rgba(255,255,255,0.6);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(255,255,255,1);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
         margin-bottom: 20px;
         transition: transform 0.2s;
     }
@@ -117,17 +117,16 @@ st.markdown("""
         overflow-x: auto; 
         padding-bottom: 20px; 
         border-radius: 15px;
-        background: rgba(255, 255, 255, 0.9); /* Aproape opac */
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
-        backdrop-filter: blur(8px);
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         padding: 10px;
-        border: 1px solid rgba(255, 255, 255, 0.18);
+        border: 1px solid #f1f5f9;
     }
     .custom-table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1000px; table-layout: fixed; }
     
     /* Header Tabel */
     .custom-table th { 
-        background: rgba(248, 250, 252, 0.95); 
+        background: #f8fafc; 
         color: #475569; 
         font-size: 12px; 
         text-transform: uppercase; 
@@ -148,7 +147,7 @@ st.markdown("""
     /* Sticky Column */
     .sticky-col { 
         position: sticky; left: 0; 
-        background: rgba(255, 255, 255, 0.95); 
+        background: #ffffff; 
         z-index: 10; 
         font-weight: 600; 
         color: #1e293b;
@@ -169,12 +168,13 @@ st.markdown("""
     /* INPUT-URI MODERNE */
     .stTextInput input, .stNumberInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] {
         border-radius: 12px !important;
-        background-color: rgba(255, 255, 255, 0.9) !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important;
+        background-color: #ffffff !important;
+        border: 1px solid #e2e8f0 !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02) !important;
     }
 
     /* CULORI STATUS */
-    .bg-liber { background: rgba(0,0,0,0.05); border-radius: 8px; height: 30px; width: 30px; margin: auto; border: 1px dashed #cbd5e1; }
+    .bg-liber { background: #f8fafc; border-radius: 8px; height: 30px; width: 30px; margin: auto; border: 1px dashed #cbd5e1; }
     .bg-ocupat { background: #ef4444; width: 100.5%; }
     .bg-checkin { background: linear-gradient(90deg, rgba(255,255,255,0) 0%, #10b981 15%, #ef4444 85%); width: 100.5%; border-radius: 10px 0 0 10px; }
     .bg-checkout { background: linear-gradient(90deg, #ef4444 15%, #10b981 85%, rgba(255,255,255,0) 100%); width: 100.5%; border-radius: 0 10px 10px 0; }
@@ -184,9 +184,9 @@ st.markdown("""
     .month-day-card {
         border-radius: 12px; padding: 12px; text-align: center; transition: all 0.2s; height: 80px;
         display: flex; flex-direction: column; justify-content: center; align-items: center;
-        background: rgba(255,255,255,0.95);
+        background: #ffffff;
     }
-    .month-day-card:hover { transform: translateY(-3px); box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
+    .month-day-card:hover { transform: translateY(-3px); box-shadow: 0 8px 16px rgba(0,0,0,0.1); }
     </style>
     """, unsafe_allow_html=True)
 
@@ -242,13 +242,11 @@ def genereaza_pdf(r):
 # ==========================================
 
 # LOGO PROPRIU
-# Asigură-te că fișierul "LOGO final.png" este în folderul principal
 if os.path.exists("LOGO final.png"):
     st.sidebar.image("LOGO final.png", use_container_width=True)
 else:
-    st.sidebar.warning("Logo lipsă. Încarcă 'LOGO final.png'")
-
-st.sidebar.markdown("### 🏔️ Elia Management")
+    # Fallback dacă nu se încarcă poza
+    st.sidebar.markdown("### 🏔️ Elia Management")
 
 if st.sidebar.button("✨ Rezervare Nouă", use_container_width=True, type="primary"):
     st.session_state['show_add_modal'] = True
@@ -305,7 +303,6 @@ if st.session_state.get('show_add_modal', False):
 # 5. HARTA (Dashboard Look)
 # ==========================================
 if sel_page == "Harta":
-    # Header Vizual
     st.markdown("""
     <div style="background: rgba(255,255,255,0.85); backdrop-filter: blur(10px); padding: 20px; border-radius: 15px; border-left: 6px solid #7c3aed; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
         <h1 style="margin:0; padding:0; background:none; -webkit-text-fill-color: #1f2937;">🗺️ Disponibilitate Camere</h1>
@@ -430,7 +427,7 @@ elif sel_page == "Calendar Lunar":
             if not df_act.empty:
                 nr = len(df_act[(df_act['checkin_n'] <= curr) & (df_act['checkout_n'] > curr)]['camera'].unique())
             
-            bg = "rgba(255,255,255,0.9)"; border = "#e2e8f0"; txt = "#1e293b"
+            bg = "#ffffff"; border = "#e2e8f0"; txt = "#1e293b"
             if nr >= 6: bg = "#fee2e2"; border = "#ef4444"; txt = "#991b1b"
             elif nr > 0: bg = "#ffedd5"; border = "#f97316"; txt = "#9a3412"
             else: bg = "#ecfdf5"; border = "#10b981"; txt = "#065f46"
