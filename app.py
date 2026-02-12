@@ -15,7 +15,7 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
 # ==========================================
-# 1. CONFIGURARE PAGINĂ
+# 1. CONFIGURARE PAGINĂ & DESIGN
 # ==========================================
 st.set_page_config(
     page_title="Elia PMS", 
@@ -23,6 +23,19 @@ st.set_page_config(
     layout="wide", 
     initial_sidebar_state="collapsed"
 )
+
+# --- TEXT REGULAMENT (CU DIACRITICE - VA FI CURĂȚAT AUTOMAT) ---
+REGULAMENT_TEXT = """
+REGULAMENT INTERN SI BUNA CONVIETUIRE
+Va multumim ca ati ales Pensiunea Elia! Pentru a va asigura un sejur relaxant, va rugam sa parcurgeti urmatoarele reguli de bun simt:
+
+Check-in / Out - Accesul in camere se face dupa ora 16:00, iar eliberarea acestora se face pana la ora 11:00.
+Ore de liniste - Va rugam sa respectati linistea intre orele 23:00 si 07:00. Petrecerile zgomotoase nu sunt permise in interiorul pensiunii.
+Semineul - Din motive de siguranta, semineul se aprinde exclusiv de catre personalul pensiunii, la cerere.
+Caldura - Temperatura se regleaza individual din termostatul fiecarei camere. Va rugam sa nu fortati setarile sau robinetii caloriferelor.
+Fumatul - Fumatul este strict interzis in interior. Va rugam sa folositi scrumierele din spatiile exterioare.
+Grija si respect - Va rugam sa folositi papuci de casa si sa pastrati integritatea obiectelor din dotare.
+"""
 
 # --- CONFIGURARE CULORI CAMERE (PASTEL) ---
 ROOM_COLORS = {
@@ -35,18 +48,23 @@ ROOM_COLORS = {
 }
 DEFAULT_COLOR = "#cccccc"
 
-# --- TEXT REGULAMENT ---
-REGULAMENT_TEXT = """
-🏠 REGULAMENTUL INTERN ȘI BUNA CONVIEȚUIRE
-Vă mulțumim că ați ales Casa Elia! Pentru a vă asigura un sejur relaxant, vă rugăm să parcurgeți următoarele reguli de bun simț:
-
-🕒 Check-in / Out - Accesul în camere se face după ora 16:00, iar eliberarea acestora se face până la ora 11:00.
-🤫 Ore de liniște - Vă rugăm să respectați liniștea între orele 23:00 și 07:00. Petrecerile zgomotoase nu sunt permise în interiorul pensiunii.
-🔥 Șemineul - Din motive de siguranță, șemineul se aprinde exclusiv de către personalul pensiunii, la cerere.
-🌡️ Căldura - Temperatura se reglează individual din termostatul fiecărei camere. Vă rugăm să nu forțați setările sau robineții caloriferelor.
-🚭 Fumatul - Fumatul este strict interzis în interior. Vă rugăm să folosiți scrumierele din spațiile exterioare.
-🧼 Grijă și respect - Vă rugăm să folosiți papuci de casă și să păstrați integritatea obiectelor din dotare.
-"""
+# --- FUNCȚIE CURĂȚARE TEXT PENTRU PDF (FIX EROARE UNICODE) ---
+def clean_text(text):
+    """Înlocuiește diacriticele și caracterele speciale pentru a evita erorile FPDF latin-1"""
+    if not isinstance(text, str):
+        return str(text)
+    
+    replacements = {
+        'ă': 'a', 'â': 'a', 'î': 'i', 'ș': 's', 'ț': 't',
+        'Ă': 'A', 'Â': 'A', 'Î': 'I', 'Ș': 'S', 'Ț': 'T',
+        'ş': 's', 'ţ': 't', 'Ş': 'S', 'Ţ': 'T',
+        '„': '"', '”': '"', '–': '-', '—': '-'
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    
+    # Elimină orice alt caracter care nu e suportat de latin-1 (ex: emoji)
+    return text.encode('latin-1', 'ignore').decode('latin-1')
 
 # --- CACHE & BACKGROUND ---
 @st.cache_resource
@@ -80,8 +98,6 @@ st.markdown("""
     .first-col { background: #ffffff; font-weight: 600; color: #1e293b; width: 80px; padding-left: 5px !important; }
 
     .calendar-box { height: 35px; width: 100%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: white; text-shadow: 0px 0px 2px rgba(0,0,0,0.5); }
-    
-    /* Clasele CSS dinamice pentru culori sunt generate inline in codul Python */
     .bg-liber { background: #f1f5f9; border-radius: 50%; height: 8px; width: 8px; margin: auto; }
 
     .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 10px; }
@@ -90,6 +106,12 @@ st.markdown("""
     .occ-low { background: #ecfdf5; border-color: #10b981; color: #065f46; }
     .occ-med { background: #ffedd5; border-color: #f97316; color: #9a3412; }
     .occ-high { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
+    
+    /* Butoane custom */
+    div[data-testid="stButton"] button {
+        width: 100%;
+        border-radius: 8px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -132,37 +154,38 @@ def este_disponibila(df, camera, start, end):
     conflict = mask & ~( (df['checkout'] <= start) | (df['checkin'] >= end) )
     return df[conflict].empty
 
-# --- PDF GENERATOR ---
+# --- PDF GENERATOR (FIXED) ---
 def genereaza_pdf_bytes(r):
     pdf = FPDF(); pdf.add_page()
     if os.path.exists("LOGO final.png"): pdf.image("LOGO final.png", x=10, y=8, w=30); pdf.ln(20)
     
-    pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "CONFIRMARE REZERVARE", ln=True, align='C'); pdf.ln(5)
+    # Folosim clean_text pentru tot ce scriem in PDF
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(0, 10, clean_text("CONFIRMARE REZERVARE"), ln=True, align='C'); pdf.ln(5)
     
     pdf.set_font("Arial", '', 11)
-    pdf.cell(0, 8, f"ID Rezervare: {r['id']}", ln=True)
-    pdf.cell(0, 8, f"Client: {r['nume']}", ln=True)
-    pdf.cell(0, 8, f"Email: {r.get('email', '-')}", ln=True)
-    pdf.cell(0, 8, f"Telefon: {r['telefon']}", ln=True)
-    
-    # Gestionare Grup in PDF
-    pdf.cell(0, 8, f"Camera(e): {r['camera']}", ln=True)
+    pdf.cell(0, 8, clean_text(f"ID Rezervare: {r['id']}"), ln=True)
+    pdf.cell(0, 8, clean_text(f"Client: {r['nume']}"), ln=True)
+    pdf.cell(0, 8, clean_text(f"Email: {r.get('email', '-')}"), ln=True)
+    pdf.cell(0, 8, clean_text(f"Telefon: {r['telefon']}"), ln=True)
+    pdf.cell(0, 8, clean_text(f"Camera(e): {r['camera']}"), ln=True)
     
     try: d1, d2 = r['checkin'].strftime('%d-%m-%Y'), r['checkout'].strftime('%d-%m-%Y')
     except: d1, d2 = str(r['checkin']), str(r['checkout'])
     pdf.cell(0, 8, f"Perioada: {d1} -> {d2}", ln=True)
     pdf.ln(2)
-    pdf.set_font("Arial", 'B', 11); pdf.cell(0, 8, f"Total de Plata: {r['pret_total']} RON", ln=True)
+    pdf.set_font("Arial", 'B', 11); pdf.cell(0, 8, clean_text(f"Total de Plata: {r['pret_total']} RON"), ln=True)
     if pd.notna(r['note']) and r['note']: 
-        pdf.set_font("Arial", 'I', 10); pdf.multi_cell(0, 6, f"Note: {r['note']}"); pdf.ln(2)
+        pdf.set_font("Arial", 'I', 10); pdf.multi_cell(0, 6, clean_text(f"Note: {r['note']}")); pdf.ln(2)
 
     pdf.ln(5)
     pdf.set_font("Arial", 'B', 10)
-    pdf.cell(0, 8, "REGULAMENT INTERN:", ln=True)
+    pdf.cell(0, 8, clean_text("REGULAMENT INTERN:"), ln=True)
     pdf.set_font("Arial", '', 9)
-    clean_reg = REGULAMENT_TEXT.replace("Ă", "A").replace("ă", "a").replace("Ț", "T").replace("ț", "t").replace("Ș", "S").replace("ș", "s").replace("Î", "I").replace("î", "i").replace("Â", "A").replace("â", "a")
-    pdf.multi_cell(0, 5, clean_reg)
+    # Folosim textul curatat
+    pdf.multi_cell(0, 5, clean_text(REGULAMENT_TEXT))
 
+    # Encoding 'latin-1' cu 'replace' este deja facut in clean_text, dar pastram siguranta
     pdf_bytes = pdf.output(dest='S').encode('latin-1', 'replace')
     pdf1_buffer = io.BytesIO(pdf_bytes)
     output_writer = PdfWriter()
@@ -191,6 +214,7 @@ def trimite_email_cu_pdf(destinatar, r, pdf_bytes):
         msg['To'] = destinatar
         msg['Subject'] = f"Confirmare Rezervare Elia - {r['nume']}"
 
+        # Body fara clean_text pt ca emailul suporta utf-8
         body = f"""Bună ziua {r['nume']},
 
 Vă mulțumim pentru rezervare!
@@ -229,7 +253,7 @@ sel_page = menu[choice]
 df_master = get_data_cached()
 
 # ==========================================
-# 4. MODAL ADĂUGARE (GRUP UPDATE + SINGLE ID)
+# 4. MODAL ADĂUGARE
 # ==========================================
 if st.session_state.get('show_add_modal', False):
     st.markdown("---")
@@ -239,9 +263,11 @@ if st.session_state.get('show_add_modal', False):
             c1, c2 = st.columns(2)
             nume = c1.text_input("Nume", placeholder="Client / Grup")
             tel = c2.text_input("Tel", placeholder="07xx")
+            
             c_email, c_cam = st.columns(2)
             email_client = c_email.text_input("Email", placeholder="client@email.com")
             camere_selectate = c_cam.multiselect("Camere", list(CAMERE_INFO.keys()))
+            
             d1 = c1.date_input("In", date.today()); d2 = c2.date_input("Out", date.today()+timedelta(1))
             val_default = sum([CAMERE_INFO[c] for c in camere_selectate]) if camere_selectate else 0
             pret = st.number_input("Preț Total (Toate camerele)", value=float(val_default))
@@ -255,10 +281,8 @@ if st.session_state.get('show_add_modal', False):
                     t1, t2 = datetime.combine(d1, time(15,0)), datetime.combine(d2, time(11,0))
                     if all(este_disponibila(df_master, c, t1, t2) for c in camere_selectate):
                         new_rows = []
-                        # SINGLE ID logic: Acelasi ID pentru toate camerele din grup
                         max_id = df_master['id'].max() if not df_master.empty else 0
                         group_id = int(max_id + 1)
-                        
                         created_reservations = []
                         pret_per_camera = pret / len(camere_selectate)
                         
@@ -270,12 +294,10 @@ if st.session_state.get('show_add_modal', False):
                         
                         status_msg = ""
                         if trimite_mail_acum and email_client and "@" in email_client:
-                            with st.spinner("Email..."):
-                                # Facem un obiect virtual pt PDF care contine toate camerele si pretul total
+                            with st.spinner("Se trimite email..."):
                                 r_mail = created_reservations[0].copy()
                                 r_mail['camera'] = ", ".join(camere_selectate)
-                                r_mail['pret_total'] = pret # Afisam pretul total pe grup
-                                
+                                r_mail['pret_total'] = pret
                                 pdf_bytes = genereaza_pdf_bytes(r_mail)
                                 ok, msg = trimite_email_cu_pdf(email_client, r_mail, pdf_bytes)
                                 status_msg = f" | {msg}"
@@ -288,7 +310,7 @@ if st.session_state.get('show_add_modal', False):
         st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
-# 5. HARTA (CULORI PASTEL & SINGLE ID)
+# 5. HARTA & ADMINISTRARE
 # ==========================================
 if sel_page == "Harta":
     st.markdown("<h2 style='text-align:center'>🗺️ Harta</h2>", unsafe_allow_html=True)
@@ -303,10 +325,7 @@ if sel_page == "Harta":
     
     for cam in CAMERE_INFO.keys():
         html += f'<tr><td class="first-col">{cam}</td>'
-        
-        # Culoare specifica camerei
         room_color = ROOM_COLORS.get(cam, DEFAULT_COLOR)
-        
         for d in zile:
             if df_v.empty: html += '<td><div class="bg-liber"></div></td>'; continue
             
@@ -314,28 +333,17 @@ if sel_page == "Harta":
             r_in = df_v[(df_v['camera']==cam) & (df_v['ci']==d)]
             r_stay = df_v[(df_v['camera']==cam) & (df_v['ci']<d) & (df_v['co']>d)]
             
-            # Logică vizuală cu Inline Styles pentru culori pastel
-            cell_style = ""
-            lbl = ""
-            
+            cell_style, lbl = "", ""
             if not r_out.empty and not r_in.empty:
-                # Schimb
-                # Gradient: OutColor -> White -> InColor? Simpler: Gradient RoomColor -> White -> RoomColor
                 cell_style = f"background: linear-gradient(90deg, {room_color} 45%, #ffffff 50%, {room_color} 55%); width: 100.5%; color: #000;"
                 lbl = f"{int(r_out.iloc[0]['id'])}↔{int(r_in.iloc[0]['id'])}"
             elif not r_out.empty:
-                # Checkout: Color -> Transparent
-                # Pastram logica verde pt checkout? Sau culoarea camerei? 
-                # Prompt: "pastreaza functionalitatea cu alta culoare la check in / check out"
-                # Vom folosi gradientul standard dar cu culoarea camerei
                 cell_style = f"background: linear-gradient(90deg, {room_color} 15%, #10b981 85%, transparent 100%); width: 100.5%; border-radius: 0 8px 8px 0;"
                 lbl = str(int(r_out.iloc[0]['id']))
             elif not r_in.empty:
-                # Checkin: Transparent -> Color
                 cell_style = f"background: linear-gradient(90deg, transparent 0%, #10b981 15%, {room_color} 85%); width: 100.5%; border-radius: 8px 0 0 8px;"
                 lbl = str(int(r_in.iloc[0]['id']))
             elif not r_stay.empty:
-                # Stay: Full Room Color
                 cell_style = f"background: {room_color}; width: 100.5%;"
                 lbl = str(int(r_stay.iloc[0]['id']))
             
@@ -344,7 +352,7 @@ if sel_page == "Harta":
         html += '</tr>'
     st.markdown(html + '</tbody></table></div>', unsafe_allow_html=True)
 
-    # CĂUTARE & EDITARE (GROUP AWARE)
+    # CĂUTARE & ADMINISTRARE
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container():
         st.markdown("<div class='info-card'>", unsafe_allow_html=True)
@@ -354,17 +362,16 @@ if sel_page == "Harta":
         if search_id > 0 and not df_master.empty:
             found = df_master[df_master['id'] == search_id]
             if not found.empty:
-                # Date agregate pentru grup
                 r = found.iloc[0]
                 camere_grup = found['camera'].tolist()
                 total_grup = found['pret_total'].sum()
                 camere_str = ", ".join(camere_grup)
                 
                 st.markdown(f"### 👤 {r['nume']}") 
-                st.markdown(f"**Camere:** {camere_str} ({len(camere_grup)})")
+                st.markdown(f"**Camere:** {camere_str}")
                 st.markdown(f"**Perioada:** {r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')} | **Total:** {total_grup:.0f} RON")
                 
-                with st.expander("✏️ Editează (Tot Grupul)", expanded=False):
+                with st.expander("✏️ Editează Rezervarea", expanded=False):
                     with st.form(key=f"e_{r['id']}"):
                         ce1, ce2 = st.columns(2)
                         nn = ce1.text_input("Nume", r['nume']); nt = ce2.text_input("Tel", r['telefon'])
@@ -373,7 +380,6 @@ if sel_page == "Harta":
                         nno = st.text_area("Note", r['note'])
                         
                         if st.form_submit_button("💾 Salvează Modificările"):
-                            # Update ALL rows with this ID
                             pret_part = np_total / len(found)
                             mask = df_master['id'] == r['id']
                             df_master.loc[mask, 'nume'] = nn
@@ -385,15 +391,14 @@ if sel_page == "Harta":
 
                 col_act1, col_act2 = st.columns(2)
                 
-                # Pregatire Obiect pt PDF/Email cu totaluri corecte
                 r_export = r.copy()
                 r_export['camera'] = camere_str
                 r_export['pret_total'] = total_grup
                 
                 pdf_bytes = genereaza_pdf_bytes(r_export)
-                col_act1.download_button("📄 Descarcă PDF", data=pdf_bytes, file_name=f"Rez_{r['id']}.pdf", mime="application/pdf", use_container_width=True)
+                col_act1.download_button("📄 PDF", data=pdf_bytes, file_name=f"Rez_{r['id']}.pdf", mime="application/pdf", use_container_width=True)
                 
-                if col_act1.button("📧 Email", use_container_width=True):
+                if col_act1.button("📧 Trimite Email", use_container_width=True):
                     if r.get('email') and "@" in str(r['email']):
                         with st.spinner("Trimit..."):
                             ok, msg = trimite_email_cu_pdf(r['email'], r_export, pdf_bytes)
@@ -401,12 +406,16 @@ if sel_page == "Harta":
                             else: st.error(msg)
                     else: st.error("Fără email!")
 
-                msg_t = f"Salut {r['nume']}, confirmare Elia.\nCam: {camere_str}\nPerioada: {r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')}\nTotal: {total_grup} RON.\n\nRegulament:\nCheck-in >16:00, Out <11:00\nLiniste 23-07."
+                reg_txt_wa = "Check-in:>16, Out:<11. Liniste:23-07. Fumat:Afara."
+                msg_t = f"Salut {r['nume']}, confirmare Elia.\nCam: {camere_str}\nPerioada: {r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')}\nTotal: {total_grup} RON.\n\n{reg_txt_wa}"
                 wa = urllib.parse.quote(msg_t)
                 col_act2.markdown(f'<a href="https://api.whatsapp.com/send?phone={r["telefon"]}&text={wa}" target="_blank"><button style="width:100%;background:#25D366;color:white;border:none;padding:10px;border-radius:5px;font-weight:bold;height:38px;margin-bottom:15px">💬 WhatsApp</button></a>', unsafe_allow_html=True)
                 
-                if col_act2.button("🗑️ Sterge Grup", use_container_width=True):
-                    df_master = df_master[df_master['id'] != r['id']]; update_data(df_master); st.rerun()
+                # BUTON STERGE ROSU SI CLAR
+                if col_act2.button("🗑️ ȘTERGE REZERVAREA", type="primary", use_container_width=True):
+                    df_master = df_master[df_master['id'] != r['id']]
+                    update_data(df_master)
+                    st.toast("Șters cu succes!"); st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
