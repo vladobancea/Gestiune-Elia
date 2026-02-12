@@ -15,7 +15,7 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
 # ==========================================
-# 1. CONFIGURARE PAGINĂ & DESIGN
+# 1. CONFIGURARE PAGINĂ
 # ==========================================
 st.set_page_config(
     page_title="Elia PMS", 
@@ -23,6 +23,19 @@ st.set_page_config(
     layout="wide", 
     initial_sidebar_state="collapsed"
 )
+
+# --- TEXT REGULAMENT (CONSTANTA) ---
+REGULAMENT_TEXT = """
+🏠 REGULAMENTUL INTERN ȘI BUNA CONVIEȚUIRE
+Vă mulțumim că ați ales Casa Elia! Pentru a vă asigura un sejur relaxant, vă rugăm să parcurgeți următoarele reguli de bun simț:
+
+🕒 Check-in / Out - Accesul în camere se face după ora 16:00, iar eliberarea acestora se face până la ora 11:00.
+🤫 Ore de liniște - Vă rugăm să respectați liniștea între orele 23:00 și 07:00. Petrecerile zgomotoase nu sunt permise în interiorul pensiunii.
+🔥 Șemineul - Din motive de siguranță, șemineul se aprinde exclusiv de către personalul pensiunii, la cerere.
+🌡️ Căldura - Temperatura se reglează individual din termostatul fiecărei camere. Vă rugăm să nu forțați setările sau robineții caloriferelor.
+🚭 Fumatul - Fumatul este strict interzis în interior. Vă rugăm să folosiți scrumierele din spațiile exterioare.
+🧼 Grijă și respect - Vă rugăm să folosiți papuci de casă și să păstrați integritatea obiectelor din dotare.
+"""
 
 # --- CACHE & BACKGROUND ---
 @st.cache_resource
@@ -83,16 +96,13 @@ def get_data_cached():
         df = conn.read(worksheet="Rezervari", ttl=0)
         req = ['id', 'nume', 'telefon', 'email', 'camera', 'checkin', 'checkout', 'status', 'pret_total', 'note']
         if df.empty: return pd.DataFrame(columns=req)
-        
         for col in req:
             if col not in df.columns: df[col] = ""
-
         df['checkin'] = pd.to_datetime(df['checkin'], errors='coerce')
         df['checkout'] = pd.to_datetime(df['checkout'], errors='coerce')
         df = df.dropna(subset=['checkin', 'checkout'])
         df['id'] = pd.to_numeric(df['id'], errors='coerce').fillna(0).astype(int)
         df['pret_total'] = pd.to_numeric(df['pret_total'], errors='coerce').fillna(0.0)
-        
         df['telefon'] = df['telefon'].astype(str).str.replace(r'\.0$', '', regex=True).replace('nan', '')
         df['email'] = df['email'].astype(str).replace('nan', '')
         return df
@@ -104,7 +114,7 @@ def update_data(df):
         df_s['checkin'] = df_s['checkin'].dt.strftime('%Y-%m-%d %H:%M:%S')
         df_s['checkout'] = df_s['checkout'].dt.strftime('%Y-%m-%d %H:%M:%S')
         conn.update(worksheet="Rezervari", data=df_s)
-        st.cache_data.clear() # Clear cache la update
+        st.cache_data.clear()
     except Exception as e: st.error(str(e))
 
 def este_disponibila(df, camera, start, end):
@@ -113,29 +123,44 @@ def este_disponibila(df, camera, start, end):
     conflict = mask & ~( (df['checkout'] <= start) | (df['checkin'] >= end) )
     return df[conflict].empty
 
-# --- PDF GENERATOR ---
+# --- PDF GENERATOR (Cu Regulament) ---
 def genereaza_pdf_bytes(r):
     pdf = FPDF(); pdf.add_page()
     if os.path.exists("LOGO final.png"): pdf.image("LOGO final.png", x=10, y=8, w=30); pdf.ln(20)
     
-    pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "CONFIRMARE REZERVARE", ln=True, align='C'); pdf.ln(10)
-    pdf.set_font("Arial", '', 12)
-    pdf.cell(0, 10, f"ID Rezervare: {r['id']}", ln=True)
-    pdf.cell(0, 10, f"Client: {r['nume']}", ln=True)
-    pdf.cell(0, 10, f"Email: {r.get('email', '-')}", ln=True)
-    pdf.cell(0, 10, f"Telefon: {r['telefon']}", ln=True)
-    pdf.cell(0, 10, f"Camera: {r['camera']}", ln=True)
+    # Header
+    pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, "CONFIRMARE REZERVARE", ln=True, align='C'); pdf.ln(5)
+    
+    # Detalii
+    pdf.set_font("Arial", '', 11)
+    pdf.cell(0, 8, f"ID Rezervare: {r['id']}", ln=True)
+    pdf.cell(0, 8, f"Client: {r['nume']}", ln=True)
+    pdf.cell(0, 8, f"Email: {r.get('email', '-')}", ln=True)
+    pdf.cell(0, 8, f"Telefon: {r['telefon']}", ln=True)
+    pdf.cell(0, 8, f"Camera: {r['camera']}", ln=True)
     try: d1, d2 = r['checkin'].strftime('%d-%m-%Y'), r['checkout'].strftime('%d-%m-%Y')
     except: d1, d2 = str(r['checkin']), str(r['checkout'])
-    pdf.cell(0, 10, f"Perioada: {d1} -> {d2}", ln=True)
-    pdf.ln(5); pdf.set_font("Arial", 'B', 12); pdf.cell(0, 10, f"Total de Plata: {r['pret_total']} RON", ln=True)
-    if pd.notna(r['note']) and r['note']: pdf.ln(5); pdf.set_font("Arial", '', 10); pdf.multi_cell(0, 10, f"Note: {r['note']}")
+    pdf.cell(0, 8, f"Perioada: {d1} -> {d2}", ln=True)
+    pdf.ln(2)
+    pdf.set_font("Arial", 'B', 11); pdf.cell(0, 8, f"Total de Plata: {r['pret_total']} RON", ln=True)
+    if pd.notna(r['note']) and r['note']: 
+        pdf.set_font("Arial", 'I', 10); pdf.multi_cell(0, 6, f"Note: {r['note']}"); pdf.ln(2)
+
+    # Regulament in PDF
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(0, 8, "REGULAMENT INTERN:", ln=True)
+    pdf.set_font("Arial", '', 9)
+    # Folosim latin-1 safe characters sau replace
+    clean_reg = REGULAMENT_TEXT.replace("Ă", "A").replace("ă", "a").replace("Ț", "T").replace("ț", "t").replace("Ș", "S").replace("ș", "s").replace("Î", "I").replace("î", "i").replace("Â", "A").replace("â", "a")
+    pdf.multi_cell(0, 5, clean_reg)
 
     pdf_bytes = pdf.output(dest='S').encode('latin-1', 'replace')
     pdf1_buffer = io.BytesIO(pdf_bytes)
     output_writer = PdfWriter()
     output_writer.add_page(PdfReader(pdf1_buffer).pages[0])
     
+    # Merge cu fisierul extern (pag 2)
     if os.path.exists("General pag2.pdf"):
         try:
             doc2 = PdfReader("General pag2.pdf")
@@ -159,7 +184,20 @@ def trimite_email_cu_pdf(destinatar, r, pdf_bytes):
         msg['To'] = destinatar
         msg['Subject'] = f"Confirmare Rezervare Elia - {r['nume']}"
 
-        body = f"Buna ziua {r['nume']},\n\nVa multumim pentru rezervare!\nAtasat gasiti confirmarea si regulamentul.\n\nEchipa Elia"
+        body = f"""Bună ziua {r['nume']},
+
+Vă mulțumim pentru rezervare!
+Atașat găsiți confirmarea oficială și regulamentul pensiunii.
+
+Detalii pe scurt:
+Camera: {r['camera']}
+Perioada: {r['checkin'].strftime('%d-%m-%Y')} -> {r['checkout'].strftime('%d-%m-%Y')}
+Total: {r['pret_total']} RON
+
+{REGULAMENT_TEXT}
+
+Echipa Elia
+"""
         msg.attach(MIMEText(body, 'plain'))
 
         part = MIMEApplication(pdf_bytes, Name=f"Rezervare_{r['id']}.pdf")
@@ -173,7 +211,7 @@ def trimite_email_cu_pdf(destinatar, r, pdf_bytes):
     except Exception as e: return False, f"Eroare: {str(e)}"
 
 # ==========================================
-# 3. INTERFAȚĂ PRINCIPALĂ
+# 3. INTERFAȚĂ
 # ==========================================
 if os.path.exists("LOGO final.png"): st.sidebar.image("LOGO final.png", use_container_width=True)
 st.sidebar.markdown("### 🏔️ Elia PMS")
@@ -184,12 +222,12 @@ sel_page = menu[choice]
 df_master = get_data_cached()
 
 # ==========================================
-# 4. MODAL ADĂUGARE (GRUP UPDATE)
+# 4. MODAL ADĂUGARE (UPDATE)
 # ==========================================
 if st.session_state.get('show_add_modal', False):
     st.markdown("---")
     with st.container():
-        st.markdown("<div class='info-card'><h3>✨ Adaugă Rezervare (Individual / Grup)</h3>", unsafe_allow_html=True)
+        st.markdown("<div class='info-card'><h3>✨ Adaugă Rezervare</h3>", unsafe_allow_html=True)
         with st.form("quick_add"):
             c1, c2 = st.columns(2)
             nume = c1.text_input("Nume", placeholder="Client / Grup")
@@ -197,63 +235,49 @@ if st.session_state.get('show_add_modal', False):
             
             c_email, c_cam = st.columns(2)
             email_client = c_email.text_input("Email", placeholder="client@email.com")
-            
-            # MULTISELECT PENTRU GRUPURI
             camere_selectate = c_cam.multiselect("Camere", list(CAMERE_INFO.keys()))
             
             d1 = c1.date_input("In", date.today()); d2 = c2.date_input("Out", date.today()+timedelta(1))
             
-            # Calcul estimativ default
-            val_default = 0
-            if camere_selectate:
-                val_default = sum([CAMERE_INFO[c] for c in camere_selectate])
-            
-            pret = st.number_input("Preț Total (Toate camerele)", value=float(val_default))
+            val_default = sum([CAMERE_INFO[c] for c in camere_selectate]) if camere_selectate else 0
+            pret = st.number_input("Preț Total", value=float(val_default))
             note = st.text_area("Note")
             
-            if st.form_submit_button("🚀 Salvează"):
+            # CHECKBOX PENTRU EMAIL
+            trimite_mail_acum = st.checkbox("📩 Trimite automat email de confirmare?", value=False)
+            
+            if st.form_submit_button("🚀 Salvează Rezervarea"):
                 if not camere_selectate:
                     st.error("Selectează cel puțin o cameră!")
                 else:
                     t1, t2 = datetime.combine(d1, time(15,0)), datetime.combine(d2, time(11,0))
-                    
                     if all(este_disponibila(df_master, c, t1, t2) for c in camere_selectate):
                         new_rows = []
                         max_id = df_master['id'].max() if not df_master.empty else 0
                         created_reservations = []
-                        
                         pret_per_camera = pret / len(camere_selectate)
                         
                         for i, cn in enumerate(camere_selectate):
-                            new_r = {
-                                "id": int(max_id+1+i), 
-                                "nume": nume, 
-                                "telefon": tel, 
-                                "email": email_client, 
-                                "camera": cn, 
-                                "checkin": t1, 
-                                "checkout": t2, 
-                                "status": "Confirmat", 
-                                "pret_total": pret_per_camera, 
-                                "note": note
-                            }
+                            new_r = {"id": int(max_id+1+i), "nume": nume, "telefon": tel, "email": email_client, "camera": cn, "checkin": t1, "checkout": t2, "status": "Confirmat", "pret_total": pret_per_camera, "note": note}
                             new_rows.append(new_r); created_reservations.append(new_r)
                         
                         update_data(pd.concat([df_master, pd.DataFrame(new_rows)], ignore_index=True))
                         
-                        email_msg = ""
-                        if email_client and "@" in email_client:
-                            with st.spinner("Trimit email..."):
+                        # Logică Email Condiționată
+                        status_msg = ""
+                        if trimite_mail_acum and email_client and "@" in email_client:
+                            with st.spinner("Se trimite email..."):
                                 pdf_bytes = genereaza_pdf_bytes(created_reservations[0])
                                 r_mail = created_reservations[0].copy()
-                                if len(created_reservations) > 1: 
+                                if len(created_reservations) > 1:
                                     r_mail['camera'] = f"GRUP ({len(camere_selectate)} Camere)"
                                     r_mail['pret_total'] = pret
                                 ok, msg = trimite_email_cu_pdf(email_client, r_mail, pdf_bytes)
-                                email_msg = f" | {msg}"
-
-                        st.session_state['show_add_modal'] = False; st.toast(f"Salvat!{email_msg}"); st.rerun()
-                    else: st.error("Una dintre camere este ocupată!")
+                                status_msg = f" | {msg}"
+                        
+                        st.session_state['show_add_modal'] = False
+                        st.toast(f"Salvat!{status_msg}"); st.rerun()
+                    else: st.error("Conflict! Una dintre camere este ocupată.")
             
             if st.form_submit_button("Închide"): st.session_state['show_add_modal'] = False; st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
@@ -286,7 +310,6 @@ if sel_page == "Harta":
         html += '</tr>'
     st.markdown(html + '</tbody></table></div>', unsafe_allow_html=True)
 
-    # CĂUTARE & EDITARE
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container():
         st.markdown("<div class='info-card'>", unsafe_allow_html=True)
@@ -300,7 +323,7 @@ if sel_page == "Harta":
                 st.markdown(f"### 👤 {r['nume']}") 
                 st.markdown(f"**Cam:** {r['camera']} | **{r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')}**")
                 
-                with st.expander("✏️ Editează / Modifică Datele", expanded=False):
+                with st.expander("✏️ Editează", expanded=False):
                     with st.form(key=f"e_{r['id']}"):
                         ce1, ce2 = st.columns(2)
                         nn = ce1.text_input("Nume", r['nume']); nt = ce2.text_input("Tel", r['telefon'])
@@ -314,7 +337,8 @@ if sel_page == "Harta":
                 col_act1, col_act2 = st.columns(2)
                 pdf_bytes = genereaza_pdf_bytes(r)
                 col_act1.download_button("📄 Descarcă PDF", data=pdf_bytes, file_name=f"Rez_{r['id']}.pdf", mime="application/pdf", use_container_width=True)
-                if col_act1.button("📧 Email Manual", use_container_width=True):
+                
+                if col_act1.button("📧 Trimite Email Acum", use_container_width=True):
                     if r.get('email') and "@" in str(r['email']):
                         with st.spinner("Trimit..."):
                             ok, msg = trimite_email_cu_pdf(r['email'], r, pdf_bytes)
@@ -322,7 +346,8 @@ if sel_page == "Harta":
                             else: st.error(msg)
                     else: st.error("Fără email!")
 
-                msg_t = f"Salut {r['nume']}, confirmare rezervare Elia.\nCamera: {r['camera']}\nInterval: {r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')}\nTotal: {r['pret_total']} RON.\nTe rog sa descarci PDF-ul din telefon."
+                # WhatsApp cu Regulament
+                msg_t = f"Salut {r['nume']}, confirmare Elia.\nCam: {r['camera']}\nPerioada: {r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')}\nTotal: {r['pret_total']} RON.\n\nREGULAMENT:\nCheck-in: >16:00, Out: <11:00\nLiniste: 23-07\nFumat: Doar afara.\n\nTe asteptam!"
                 wa = urllib.parse.quote(msg_t)
                 col_act2.markdown(f'<a href="https://api.whatsapp.com/send?phone={r["telefon"]}&text={wa}" target="_blank"><button style="width:100%;background:#25D366;color:white;border:none;padding:10px;border-radius:5px;font-weight:bold;height:38px;margin-bottom:15px">💬 WhatsApp</button></a>', unsafe_allow_html=True)
                 if col_act2.button("🗑️ Sterge", use_container_width=True):
@@ -356,139 +381,74 @@ elif sel_page == "Calendar":
 # ==========================================
 elif sel_page == "Statistici":
     st.markdown("### 📊 Statistici Avansate")
-    
     if not df_master.empty:
         df_s = df_master[df_master['status'] != 'Anulat'].copy()
         
-        # --- FILTRE ---
         col_f1, col_f2 = st.columns(2)
         ani_disponibili = sorted(df_s['checkin'].dt.year.unique().tolist())
         if not ani_disponibili: ani_disponibili = [date.today().year]
+        an_selectat = col_f1.selectbox("Anul", ani_disponibili, index=len(ani_disponibili)-1)
+        luni_nume = list(calendar.month_name)[1:]
+        luni_selectate = col_f2.multiselect("Lunile (Gol = Tot Anul)", luni_nume)
         
-        an_selectat = col_f1.selectbox("Selectează Anul", ani_disponibili, index=len(ani_disponibili)-1)
-        
-        luni_nume = list(calendar.month_name)[1:] # Ianuarie, Februarie...
-        luni_selectate = col_f2.multiselect("Selectează Lunile (Gol = Tot Anul)", luni_nume)
-        
-        # Filtrare Date
         df_filtrat = df_s[df_s['checkin'].dt.year == an_selectat]
         if luni_selectate:
              month_indices = [list(calendar.month_name).index(m) for m in luni_selectate]
              df_filtrat = df_filtrat[df_filtrat['checkin'].dt.month.isin(month_indices)]
         
-        # --- CALCULE ---
-        # 1. Venituri
         venit_total = df_filtrat['pret_total'].sum()
         
-        # 2. Grad Ocupare (Complex)
-        # Trebuie să iterăm prin TOATE rezervările din an (nu doar start date) pentru a vedea overlap-ul
-        total_capacity_days = 0
-        occupied_days = 0
-        
-        # Definim intervalul de analiză
+        # Calcul Ocupare Complex
+        total_capacity_days = 0; occupied_days = 0
         if luni_selectate:
-             # Daca avem luni selectate, calculam capacitatea doar pt acele luni
              target_months = [list(calendar.month_name).index(m) for m in luni_selectate]
-             # Generam toate zilele din lunile selectate ale anului selectat
              days_to_check = []
              for m in target_months:
                  num_days = calendar.monthrange(an_selectat, m)[1]
-                 start_m = date(an_selectat, m, 1)
-                 days_to_check.extend([start_m + timedelta(days=i) for i in range(num_days)])
+                 days_to_check.extend([date(an_selectat, m, 1) + timedelta(days=i) for i in range(num_days)])
         else:
-             # Tot anul
-             start_y = date(an_selectat, 1, 1)
-             end_y = date(an_selectat, 12, 31)
-             delta = end_y - start_y
-             days_to_check = [start_y + timedelta(days=i) for i in range(delta.days + 1)]
+             s_y = date(an_selectat, 1, 1); e_y = date(an_selectat, 12, 31)
+             days_to_check = [s_y + timedelta(days=i) for i in range((e_y - s_y).days + 1)]
              
-        total_capacity_days = len(days_to_check) * 6 # 6 camere
-        
-        # Verificam ocuparea
-        # Luam rezervarile active care se intersecteaza cu anul selectat
-        relevant_bookings = df_s[
-            (df_s['checkin'].dt.date <= date(an_selectat, 12, 31)) & 
-            (df_s['checkout'].dt.date >= date(an_selectat, 1, 1))
-        ]
-        
-        # Set de zile ocupate (tuple: data, camera) pentru a evita dublarea
+        total_capacity_days = len(days_to_check) * 6
+        relevant_bookings = df_s[(df_s['checkin'].dt.date <= date(an_selectat, 12, 31)) & (df_s['checkout'].dt.date >= date(an_selectat, 1, 1))]
         occupied_set = set()
-        
         for _, row in relevant_bookings.iterrows():
-            # Range-ul rezervarii
             stay_dates = pd.date_range(row['checkin'], row['checkout'] - timedelta(days=1)).date
             for d in stay_dates:
-                if d in days_to_check:
-                    occupied_set.add((d, row['camera']))
+                if d in days_to_check: occupied_set.add((d, row['camera']))
         
-        grad_ocupare = 0
-        if total_capacity_days > 0:
-            grad_ocupare = (len(occupied_set) / total_capacity_days) * 100
+        grad_ocupare = (len(occupied_set) / total_capacity_days) * 100 if total_capacity_days > 0 else 0
 
-        # --- AFIȘARE KPI ---
         c1, c2 = st.columns(2)
-        c1.markdown(f"<div class='info-card'><h2 style='color:#059669;margin:0'>{venit_total:,.0f} RON</h2><small>Venituri (Perioada Selectată)</small></div>", unsafe_allow_html=True)
-        c2.markdown(f"<div class='info-card'><h2 style='color:#2563eb;margin:0'>{grad_ocupare:.1f}%</h2><small>Grad Ocupare Mediu</small></div>", unsafe_allow_html=True)
-        
+        c1.markdown(f"<div class='info-card'><h2 style='color:#059669;margin:0'>{venit_total:,.0f} RON</h2><small>Venituri</small></div>", unsafe_allow_html=True)
+        c2.markdown(f"<div class='info-card'><h2 style='color:#2563eb;margin:0'>{grad_ocupare:.1f}%</h2><small>Grad Ocupare</small></div>", unsafe_allow_html=True)
         st.divider()
         
-        # --- GRAFICE ---
         col_g1, col_g2 = st.columns(2)
-        
-        # Prep date pentru grafice lunare
-        # Cream un dataframe sumarizat pe luni pentru anul selectat
         monthly_stats = []
         for m in range(1, 13):
             month_name = calendar.month_name[m]
-            
-            # Venituri (dupa checkin)
             rev = df_s[(df_s['checkin'].dt.year == an_selectat) & (df_s['checkin'].dt.month == m)]['pret_total'].sum()
-            
-            # Ocupare
-            # Capacitate luna
             days_in_m = calendar.monthrange(an_selectat, m)[1]
             cap_m = days_in_m * 6
-            
-            # Zile ocupate in luna m
-            start_m = date(an_selectat, m, 1)
-            end_m = date(an_selectat, m, days_in_m)
-            
-            occ_count = 0
-            # Luam rezervarile care ating luna asta
-            m_bookings = df_s[
-                (df_s['checkin'].dt.date <= end_m) & 
-                (df_s['checkout'].dt.date >= start_m)
-            ]
-            
+            start_m = date(an_selectat, m, 1); end_m = date(an_selectat, m, days_in_m)
+            m_bookings = df_s[(df_s['checkin'].dt.date <= end_m) & (df_s['checkout'].dt.date >= start_m)]
             occ_set_m = set()
             for _, row in m_bookings.iterrows():
                 stay = pd.date_range(row['checkin'], row['checkout'] - timedelta(days=1)).date
                 for d in stay:
-                    if d.month == m and d.year == an_selectat:
-                        occ_set_m.add((d, row['camera']))
-            
-            occ_rate = (len(occ_set_m) / cap_m) * 100
-            
-            monthly_stats.append({
-                "Luna": month_name,
-                "Venituri": rev,
-                "Grad Ocupare": round(occ_rate, 1)
-            })
+                    if d.month == m and d.year == an_selectat: occ_set_m.add((d, row['camera']))
+            monthly_stats.append({"Luna": month_name, "Venituri": rev, "Grad Ocupare": round((len(occ_set_m)/cap_m)*100, 1)})
             
         df_charts = pd.DataFrame(monthly_stats)
-        
-        # Filtram graficele daca sunt luni selectate
-        if luni_selectate:
-            df_charts = df_charts[df_charts['Luna'].isin(luni_selectate)]
+        if luni_selectate: df_charts = df_charts[df_charts['Luna'].isin(luni_selectate)]
 
         col_g1.subheader("💰 Venituri Lunare")
         col_g1.bar_chart(df_charts.set_index("Luna")['Venituri'], color="#059669")
-        
         col_g2.subheader("📈 Grad Ocupare (%)")
         col_g2.line_chart(df_charts.set_index("Luna")['Grad Ocupare'], color="#2563eb")
-
-    else:
-        st.info("Nu există date în sistem.")
+    else: st.info("Nu există date.")
 
 elif sel_page == "Lista":
     st.markdown("### 📋 Registru")
