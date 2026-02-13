@@ -3,3 +3,4 @@ pandas
 fpdf
 st-gsheets-connection
 pypdf
+plotly
