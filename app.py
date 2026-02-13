@@ -13,6 +13,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
+import plotly.express as px
 
 # ==========================================
 # 1. CONFIGURARE PAGINĂ
@@ -35,10 +36,10 @@ ROOM_COLORS = {
 }
 DEFAULT_COLOR = "#cccccc"
 
-# --- TEXT REGULAMENT (Fara Diacritice pt siguranta maxima, sau curatat) ---
+# --- TEXT REGULAMENT ---
 REGULAMENT_TEXT = """
 REGULAMENT INTERN SI BUNA CONVIETUIRE
-Va multumim ca ati ales Casa Elia! Pentru a va asigura un sejur relaxant, va rugam sa parcurgeti urmatoarele reguli de bun simt:
+Va multumim ca ati ales Pensiunea Elia! Pentru a va asigura un sejur relaxant, va rugam sa parcurgeti urmatoarele reguli de bun simt:
 
 Check-in / Out - Accesul in camere se face dupa ora 16:00, iar eliberarea acestora se face pana la ora 11:00.
 Ore de liniste - Va rugam sa respectati linistea intre orele 23:00 si 07:00. Petrecerile zgomotoase nu sunt permise in interiorul pensiunii.
@@ -83,15 +84,6 @@ st.markdown("""
     [data-testid="stSidebar"] * { color: #1f2937 !important; }
     
     .info-card { background: rgba(255, 255, 255, 0.95); padding: 20px; border-radius: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid #f1f5f9; }
-
-    .scroll-container { overflow-x: auto; padding-bottom: 10px; background: rgba(255, 255, 255, 0.9); border-radius: 15px; }
-    .custom-table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 800px; } 
-    .custom-table th { background: #f8fafc; color: #475569; padding: 10px; border-bottom: 2px solid #e2e8f0; font-size: 11px; text-transform: uppercase; }
-    .custom-table td { border-bottom: 1px solid #f1f5f9; height: 50px; vertical-align: middle; padding: 0 !important; }
-    .first-col { background: #ffffff; font-weight: 600; color: #1e293b; width: 80px; padding-left: 5px !important; }
-
-    .calendar-box { height: 35px; width: 100%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: white; text-shadow: 0px 0px 2px rgba(0,0,0,0.5); }
-    .bg-liber { background: #f1f5f9; border-radius: 50%; height: 8px; width: 8px; margin: auto; }
 
     .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 10px; }
     .cal-day-header { text-align: center; font-weight: bold; font-size: 12px; color: #64748b; margin-bottom: 5px; }
@@ -148,8 +140,7 @@ def genereaza_pdf_bytes(r):
     pdf = FPDF(); pdf.add_page()
     if os.path.exists("LOGO final.png"): pdf.image("LOGO final.png", x=10, y=8, w=30); pdf.ln(20)
     
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(0, 10, clean_text("CONFIRMARE REZERVARE"), ln=True, align='C'); pdf.ln(5)
+    pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, clean_text("CONFIRMARE REZERVARE"), ln=True, align='C'); pdf.ln(5)
     
     pdf.set_font("Arial", '', 11)
     pdf.cell(0, 8, clean_text(f"ID Rezervare: {r['id']}"), ln=True)
@@ -232,13 +223,13 @@ Echipa Elia
 if os.path.exists("LOGO final.png"): st.sidebar.image("LOGO final.png", use_container_width=True)
 st.sidebar.markdown("### 🏔️ Elia PMS")
 if st.sidebar.button("✨ Rezervare Nouă", use_container_width=True, type="primary"): st.session_state['show_add_modal'] = True
-menu = {"📅 Harta": "Harta", "🗓️ Calendar": "Calendar", "📊 Statistici": "Statistici", "📋 Registru": "Lista"}
+menu = {"📅 Harta (Timeline)": "Harta", "🗓️ Calendar": "Calendar", "📊 Statistici": "Statistici", "📋 Registru": "Lista"}
 choice = st.sidebar.radio("Meniu", list(menu.keys()), format_func=lambda x: x)
 sel_page = menu[choice]
 df_master = get_data_cached()
 
 # ==========================================
-# 4. MODAL ADĂUGARE
+# 4. MODAL ADĂUGARE (LOGICA DE PREȚ NOUĂ)
 # ==========================================
 if st.session_state.get('show_add_modal', False):
     st.markdown("---")
@@ -255,9 +246,32 @@ if st.session_state.get('show_add_modal', False):
             
             d1 = c1.date_input("In", date.today()); d2 = c2.date_input("Out", date.today()+timedelta(1))
             
-            # Pretul default e doar sugestiv, userul il poate suprascrie
-            val_default = sum([CAMERE_INFO[c] for c in camere_selectate]) if camere_selectate else 0
-            pret = st.number_input("Preț Total (Toate camerele)", value=float(val_default))
+            st.markdown("---")
+            st.markdown("**💰 Configurare Preț**")
+            # LOGICA PREȚ DUAL
+            tip_pret = st.radio("Cum introduci prețul?", ["Total Sejur (Global)", "Per Noapte / Cameră"], horizontal=True)
+            
+            # Valoare input
+            val_introdusa = st.number_input("Valoare (RON)", value=0.0, step=50.0)
+            
+            # Calcul estimativ in timp real (inainte de submit, bazat pe selectie)
+            num_nopti = (d2 - d1).days
+            num_camere = len(camere_selectate) if camere_selectate else 0
+            
+            info_calcul = ""
+            pret_final_total = 0.0
+            
+            if num_camere > 0 and num_nopti > 0:
+                if tip_pret == "Total Sejur (Global)":
+                    pret_final_total = val_introdusa
+                    pret_per_noapte = pret_final_total / num_nopti / num_camere
+                    info_calcul = f"Rezultă: **{pret_per_noapte:.0f} RON** / noapte / cameră"
+                else:
+                    pret_final_total = val_introdusa * num_nopti * num_camere
+                    info_calcul = f"Total Sejur Grup: **{pret_final_total:.0f} RON**"
+            
+            st.info(f"ℹ️ {info_calcul}" if info_calcul else "Selectează camere și date pentru calcul.")
+            
             note = st.text_area("Note")
             trimite_mail_acum = st.checkbox("📩 Trimite automat email?", value=False)
             
@@ -272,12 +286,12 @@ if st.session_state.get('show_add_modal', False):
                         group_id = int(max_id + 1)
                         created_reservations = []
                         
-                        # UPDATE: Prețul NU se mai împarte. Se pune intregul pe fiecare linie pt ca userul vrea asa.
-                        # La statistici vom filtra duplicatele ID.
-                        pret_per_row = pret 
+                        # Calcul final preț de salvat per linie
+                        # Salvăm proporțional per cameră pentru a păstra logica DB, dar totalul grupului e cel important
+                        pret_per_camera_total = pret_final_total / num_camere
                         
                         for cn in camere_selectate:
-                            new_r = {"id": group_id, "nume": nume, "telefon": tel, "email": email_client, "camera": cn, "checkin": t1, "checkout": t2, "status": "Confirmat", "pret_total": pret_per_row, "note": note}
+                            new_r = {"id": group_id, "nume": nume, "telefon": tel, "email": email_client, "camera": cn, "checkin": t1, "checkout": t2, "status": "Confirmat", "pret_total": pret_per_camera_total, "note": note}
                             new_rows.append(new_r); created_reservations.append(new_r)
                         
                         update_data(pd.concat([df_master, pd.DataFrame(new_rows)], ignore_index=True))
@@ -287,7 +301,7 @@ if st.session_state.get('show_add_modal', False):
                             with st.spinner("Se trimite email..."):
                                 r_mail = created_reservations[0].copy()
                                 r_mail['camera'] = ", ".join(camere_selectate)
-                                r_mail['pret_total'] = pret
+                                r_mail['pret_total'] = pret_final_total
                                 pdf_bytes = genereaza_pdf_bytes(r_mail)
                                 ok, msg = trimite_email_cu_pdf(email_client, r_mail, pdf_bytes)
                                 status_msg = f" | {msg}"
@@ -300,47 +314,68 @@ if st.session_state.get('show_add_modal', False):
         st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
-# 5. HARTA & ADMINISTRARE
+# 5. HARTA INTERACTIVĂ (TIMELINE - GANTT)
 # ==========================================
 if sel_page == "Harta":
-    st.markdown("<h2 style='text-align:center'>🗺️ Harta</h2>", unsafe_allow_html=True)
-    d_start = st.date_input("Data:", date.today())
-    zile = [d_start + timedelta(days=i) for i in range(14)]
-    df_v = df_master[df_master['status']!='Anulat'].copy() if not df_master.empty else pd.DataFrame(columns=df_master.columns)
-    if not df_v.empty: df_v['ci'] = df_v['checkin'].dt.date; df_v['co'] = df_v['checkout'].dt.date
-
-    html = '<div class="scroll-container"><table class="custom-table"><thead><tr><th class="first-col">Cam</th>'
-    for d in zile: html += f'<th>{d.strftime("%d")}<br>{d.strftime("%b")}</th>'
-    html += '</tr></thead><tbody>'
+    st.markdown("<h2 style='text-align:center'>🗺️ Harta Disponibilității (Interactivă)</h2>", unsafe_allow_html=True)
     
-    for cam in CAMERE_INFO.keys():
-        html += f'<tr><td class="first-col">{cam}</td>'
-        room_color = ROOM_COLORS.get(cam, DEFAULT_COLOR)
-        for d in zile:
-            if df_v.empty: html += '<td><div class="bg-liber"></div></td>'; continue
-            
-            r_out = df_v[(df_v['camera']==cam) & (df_v['co']==d)]
-            r_in = df_v[(df_v['camera']==cam) & (df_v['ci']==d)]
-            r_stay = df_v[(df_v['camera']==cam) & (df_v['ci']<d) & (df_v['co']>d)]
-            
-            cell_style, lbl = "", ""
-            if not r_out.empty and not r_in.empty:
-                cell_style = f"background: linear-gradient(90deg, {room_color} 45%, #ffffff 50%, {room_color} 55%); width: 100.5%; color: #000;"
-                lbl = f"{int(r_out.iloc[0]['id'])}↔{int(r_in.iloc[0]['id'])}"
-            elif not r_out.empty:
-                cell_style = f"background: linear-gradient(90deg, {room_color} 15%, #10b981 85%, transparent 100%); width: 100.5%; border-radius: 0 8px 8px 0;"
-                lbl = str(int(r_out.iloc[0]['id']))
-            elif not r_in.empty:
-                cell_style = f"background: linear-gradient(90deg, transparent 0%, #10b981 15%, {room_color} 85%); width: 100.5%; border-radius: 8px 0 0 8px;"
-                lbl = str(int(r_in.iloc[0]['id']))
-            elif not r_stay.empty:
-                cell_style = f"background: {room_color}; width: 100.5%;"
-                lbl = str(int(r_stay.iloc[0]['id']))
-            
-            if cell_style == "": html += f'<td><div class="bg-liber"></div></td>'
-            else: html += f'<td><div class="calendar-box" style="{cell_style}">{lbl}</div></td>'
-        html += '</tr>'
-    st.markdown(html + '</tbody></table></div>', unsafe_allow_html=True)
+    if not df_master.empty:
+        df_viz = df_master[df_master['status'] != 'Anulat'].copy()
+        
+        # Pregatire date pentru Plotly
+        # Plotly vrea Start, Finish, Resource (Camera), Color
+        # Mapam culorile din ROOM_COLORS
+        df_viz['Culoare'] = df_viz['camera'].map(ROOM_COLORS).fillna(DEFAULT_COLOR)
+        
+        # Tooltip custom
+        df_viz['Detalii'] = df_viz.apply(lambda x: f"{x['nume']} ({x['id']})<br>Total: {x['pret_total']:.0f} RON", axis=1)
+        
+        # Sortare camere
+        camere_ordine = sorted(list(CAMERE_INFO.keys()), reverse=True) # Reverse ca sa apara Cam 1 sus in Plotly
+        
+        fig = px.timeline(
+            df_viz, 
+            x_start="checkin", 
+            x_end="checkout", 
+            y="camera", 
+            color="camera",
+            custom_data=['nume', 'id', 'pret_total', 'telefon'],
+            color_discrete_map=ROOM_COLORS,
+            category_orders={"camera": camere_ordine}
+        )
+        
+        # Configurare aspect vizual
+        fig.update_layout(
+            xaxis_title="",
+            yaxis_title="",
+            showlegend=False,
+            height=400,
+            margin=dict(l=10, r=10, t=10, b=10),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+        
+        # Configurare linii grid si data curenta
+        fig.update_xaxes(
+            side="top", 
+            showgrid=True, 
+            gridwidth=1, 
+            gridcolor='#eee',
+            tickformat="%d %b",
+            dtick="D1" # Tick la fiecare zi
+        )
+        
+        # Linie verticala "Astazi"
+        fig.add_vline(x=datetime.now(), line_width=2, line_dash="dash", line_color="red")
+        
+        # Tooltip avansat
+        fig.update_traces(
+            hovertemplate="<b>%{customdata[0]}</b><br>ID: %{customdata[1]}<br>Pret: %{customdata[2]} RON<br>Tel: %{customdata[3]}<extra></extra>"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Nu există rezervări de afișat.")
 
     # CĂUTARE & ADMINISTRARE
     st.markdown("<br>", unsafe_allow_html=True)
@@ -355,29 +390,30 @@ if sel_page == "Harta":
                 r = found.iloc[0]
                 camere_grup = found['camera'].tolist()
                 
-                # UPDATE: Prețul nu se mai însumează, deoarece este deja Totalul pe fiecare linie. Luăm valoarea de pe prima linie.
-                total_grup = r['pret_total'] 
+                # TOTALUL GRUPULUI
+                total_grup = found['pret_total'].sum()
                 camere_str = ", ".join(camere_grup)
                 
                 st.markdown(f"### 👤 {r['nume']}") 
                 st.markdown(f"**Camere:** {camere_str}")
-                st.markdown(f"**Perioada:** {r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')} | **Total:** {total_grup:.0f} RON")
+                st.markdown(f"**Perioada:** {r['checkin'].strftime('%d.%m')} - {r['checkout'].strftime('%d.%m')} | **Total Grup:** {total_grup:.0f} RON")
                 
                 with st.expander("✏️ Editează Rezervarea", expanded=False):
                     with st.form(key=f"e_{r['id']}"):
                         ce1, ce2 = st.columns(2)
                         nn = ce1.text_input("Nume", r['nume']); nt = ce2.text_input("Tel", r['telefon'])
                         ne = ce1.text_input("Email", r.get('email', ''))
-                        np_total = ce2.number_input("Pret Total Grup", value=float(total_grup))
+                        # Editare pret total grup
+                        np_total = ce2.number_input("Pret Total Grup (Nou)", value=float(total_grup))
                         nno = st.text_area("Note", r['note'])
                         
                         if st.form_submit_button("💾 Salvează Modificările"):
+                            pret_part = np_total / len(found)
                             mask = df_master['id'] == r['id']
                             df_master.loc[mask, 'nume'] = nn
                             df_master.loc[mask, 'telefon'] = nt
                             df_master.loc[mask, 'email'] = ne
-                            # Salvăm noul total pe toate rândurile (fără împărțire)
-                            df_master.loc[mask, 'pret_total'] = np_total 
+                            df_master.loc[mask, 'pret_total'] = pret_part
                             df_master.loc[mask, 'note'] = nno
                             update_data(df_master); st.toast("Actualizat!"); st.rerun()
 
@@ -447,7 +483,7 @@ elif sel_page == "Statistici":
              month_indices = [list(calendar.month_name).index(m) for m in luni_selectate]
              df_filtrat = df_filtrat[df_filtrat['checkin'].dt.month.isin(month_indices)]
         
-        # UPDATE STATISTICI: Sumam doar ID-urile unice, altfel dublam venitul la grupuri
+        # Venituri unice pe ID
         venit_total = df_filtrat.drop_duplicates(subset=['id'])['pret_total'].sum()
         
         total_capacity_days = 0; occupied_days = 0
@@ -481,7 +517,6 @@ elif sel_page == "Statistici":
         for m in range(1, 13):
             month_name = calendar.month_name[m]
             
-            # UPDATE STATISTICI LUNARE: Drop duplicates by ID inainte de suma
             m_data = df_s[(df_s['checkin'].dt.year == an_selectat) & (df_s['checkin'].dt.month == m)]
             rev = m_data.drop_duplicates(subset=['id'])['pret_total'].sum()
             
