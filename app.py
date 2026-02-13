@@ -448,7 +448,7 @@ if sel_page == "Harta":
 # ==========================================
 elif sel_page == "Calendar":
     st.markdown("### 🗓️ Calendar")
-    c1, c2 = st.columns([1,3]); an = c1.selectbox("An", [2024, 2025, 2026], index=1); luna = c2.selectbox("Luna", range(1, 13), index=datetime.now().month-1)
+    c1, c2 = st.columns([1,3]); an = c1.selectbox("An", [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027, 2028], index=1); luna = c2.selectbox("Luna", range(1, 13), index=datetime.now().month-1)
     cal = calendar.monthcalendar(an, luna)
     html_cal = '<div class="calendar-grid">'
     for z in ["Lu", "Ma", "Mi", "Jo", "Vi", "Sâ", "Du"]: html_cal += f'<div class="cal-day-header">{z}</div>'
