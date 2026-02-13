@@ -314,14 +314,20 @@ if st.session_state.get('show_add_modal', False):
         st.markdown("</div>", unsafe_allow_html=True)
 
 # ==========================================
-# 5. HARTA (TABEL RAPID & COLORAT)
+# 5. HARTA (TABEL RAPID & COLORAT & SELECTOR ANI)
 # ==========================================
 if sel_page == "Harta":
     st.markdown("<h2 style='text-align:center'>🗺️ Harta Disponibilității</h2>", unsafe_allow_html=True)
     
     # Selector LUNA pentru navigare
     c_nav1, c_nav2 = st.columns(2)
-    an_viz = c_nav1.selectbox("An", [2024, 2025, 2026], index=1)
+    
+    # --- MODIFICARE: SELECTOR ANI DINAMIC (2017 -> PREZENT + 5) ---
+    an_curent = datetime.now().year
+    lista_ani = list(range(2017, an_curent + 6))
+    idx_an_curent = lista_ani.index(an_curent) if an_curent in lista_ani else 0
+    
+    an_viz = c_nav1.selectbox("An", lista_ani, index=idx_an_curent)
     luna_viz = c_nav2.selectbox("Luna", list(calendar.month_name)[1:], index=datetime.now().month-1)
     
     luna_idx = list(calendar.month_name).index(luna_viz)
@@ -465,9 +471,12 @@ elif sel_page == "Statistici":
         df_s = df_master[df_master['status'] != 'Anulat'].copy()
         
         col_f1, col_f2 = st.columns(2)
-        ani_disponibili = sorted(df_s['checkin'].dt.year.unique().tolist())
-        if not ani_disponibili: ani_disponibili = [date.today().year]
-        an_selectat = col_f1.selectbox("Anul", ani_disponibili, index=len(ani_disponibili)-1)
+        # --- SELECTOR ANI DINAMIC STATISTICI ---
+        ani_disp = sorted(df_s['checkin'].dt.year.unique().tolist())
+        if not ani_disp: ani_disp = [date.today().year]
+        if 2017 not in ani_disp: ani_disp = [2017] + ani_disp # Force 2017 if missing
+        
+        an_selectat = col_f1.selectbox("Anul", ani_disp, index=len(ani_disp)-1)
         luni_nume = list(calendar.month_name)[1:]
         luni_selectate = col_f2.multiselect("Lunile (Gol = Tot Anul)", luni_nume)
         
@@ -509,6 +518,7 @@ elif sel_page == "Statistici":
         monthly_stats = []
         for m in range(1, 13):
             month_name = calendar.month_name[m]
+            
             m_data = df_s[(df_s['checkin'].dt.year == an_selectat) & (df_s['checkin'].dt.month == m)]
             rev = m_data.drop_duplicates(subset=['id'])['pret_total'].sum()
             
